@@ -1,5 +1,10 @@
 package com.water.fzfwificenter;
 
+//UI
+import com.water.fzfwificenter.UI.AnalyzerTestView;
+import com.water.fzfwificenter.UI.AppView;
+
+
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
@@ -10,12 +15,9 @@ public class MainApp extends Application {
 
     @Override
     public void start(Stage stage) {
-        Label label = new Label("Hello JavaFX!");
-        StackPane root = new StackPane(label);
-        Scene scene = new Scene(root, 800, 600);
-
-        stage.setTitle("Software Engineering Project");
-        stage.setScene(scene);
+        AppView view = new AnalyzerTestView();
+        stage.setTitle("JavaFX 測試入口");
+        stage.setScene(view.createScene());
         stage.show();
     }
 
