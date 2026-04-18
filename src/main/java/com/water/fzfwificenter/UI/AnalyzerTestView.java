@@ -35,7 +35,7 @@ public class AnalyzerTestView implements AppView {
             }catch(AnalysisException e){
                 switch (e.getErrorType()) {
                     case EMPTY_INPUT -> outputArea.setText("請先輸入程式碼");
-                    case Analysis_ERROR -> outputArea.setText("程式碼格式有誤，無法解析");
+                    case ANALYSIS_ERROR_TYPE -> outputArea.setText("程式碼格式有誤，無法解析");
                     case UNSUPPORTED_LANGUAGE -> outputArea.setText("目前不支援此語言");
                 }
             }catch (Exception e) {
