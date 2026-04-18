@@ -1,0 +1,65 @@
+/* src/main/resources/style.css */
+
+/* 1. 全局背景與字體設定 */
+.root {
+    -fx-background-color: #1e1e1e;
+    -fx-font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+/* 2. 上方控制列 (稍微深一點的黑色做出層次) */
+.top-bar {
+    -fx-background-color: #252526;
+    -fx-padding: 15px;
+    -fx-border-color: #333;
+    -fx-border-width: 0 0 1 0; /* 只有下方有邊框 */
+}
+
+/* 3. 標題文字 */
+.title-label {
+    -fx-text-fill: #cccccc;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+/* 4. 一般按鈕樣式 */
+.button {
+    -fx-background-color: #333333;
+    -fx-text-fill: #e0e0e0;
+    -fx-border-color: #444444;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+    -fx-padding: 8px 16px;
+    -fx-cursor: hand;
+}
+.button:hover {
+    -fx-background-color: #444444;
+}
+
+/* 5. 主視覺按鈕 (模擬圖中的青藍色按鈕) */
+.primary-btn {
+    -fx-background-color: #2b7a78;
+    -fx-text-fill: white;
+    -fx-border-color: transparent;
+}
+.primary-btn:hover {
+    -fx-background-color: #3aafa9;
+}
+
+/* 6. 右側程式碼檢視區 (仿 VS Code 顏色) */
+/* 右側程式碼檢視區 (強力覆蓋預設樣式) */
+.text-area {
+    -fx-font-family: 'Consolas', monospace;
+    -fx-font-size: 14px;
+    -fx-text-fill: #d4d4d4; /* 字體顏色：淺灰 */
+    -fx-background-color: transparent;
+}
+
+/* 針對 TextArea 內部的畫布進行背景填色 */
+.text-area .content {
+    -fx-background-color: #1e1e1e;
+}
+
+/* 當滑鼠點擊文字框時，避免背景變色 */
+.text-area:focused .content {
+    -fx-background-color: #1e1e1e;
+}
