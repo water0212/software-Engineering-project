@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>程式碼關聯圖</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1e1e1e;
+        }
+
+        #cy {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #tooltip {
+            position: absolute; top: 10px; left: 10px;
+            background: #252526; border: 1px solid #444;
+            color: #d4d4d4; padding: 10px 15px; border-radius: 6px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: none; pointer-events: none; z-index: 10;
+            font-family: 'Consolas', monospace; font-size: 12px;
+        }
+
+        /* 🚨 新增：專門用來抓蟲的紅色狀態列 */
+        #debug-bar {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            background: #8b0000; color: white; padding: 5px 10px;
+            font-family: monospace; font-size: 12px; z-index: 100;
+        }
+    </style>
+</head>
+<body>
+<div id="tooltip"></div>
+<div id="cy"></div>
+
+<div id="debug-bar">系統就緒。等待點擊...</div>
+
+<script>
+    var cy;
+    var debugBar = document.getElementById('debug-bar');
+
+    // 專屬除錯函數，直接把訊息寫在畫面上
+    function showDebug(msg) {
+        debugBar.innerText = "狀態: " + msg;
+    }
+
+    function renderGraph(graphData) {
+        cy = cytoscape({
+            minZoom: 0.2,
+            maxZoom: 1.5,           // 🚨 降至 1.5，徹底防止 JavaFX 放大破圖
+            wheelSensitivity: 0.15,
+
+            pixelRatio: 1.0,
+            textureOnViewport: false,
+            motionBlur: false,
+
+            container: document.getElementById('cy'),
+            elements: graphData,
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'background-color': '#3a4a5a',
+                        'label': 'data(label)',
+                        'color': '#e0e0e0',
+                        'text-valign': 'center',
+                        'font-size': '12px',
+                        'shape': 'rectangle',
+                        'width': 'label',      // 🚨 改回 label，讓文字不會被裁切
+                        'padding': '10px'      // 🚨 加上內邊距讓方框更好看
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 1.5,
+                        'line-color': '#666666',
+                        'target-arrow-color': '#666666',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier'
+                    }
+                },
+                {
+                    selector: 'node:selected',
+                    style: {
+                        'background-color': '#2b7a78',
+                        'border-color': '#3aafa9',
+                        'border-width': 2
+                    }
+                }
+            ],
+            layout: { name: 'cose', animate: true }
+        });
+
+        // --- 綁定互動事件 ---
+
+        cy.on('tap', 'node', function(evt){
+            var node = evt.target;
+            var fileName = node.data('fileName');
+
+            // 1. 先在畫面上印出我們抓到了什麼
+            showDebug("點擊了 " + node.id() + " | 準備尋找檔名: " + fileName);
+
+            // 2. 檢查 Java 橋樑
+            if (typeof window.javaApp !== 'undefined') {
+                if (fileName) {
+                    try {
+                        window.javaApp.showCode(fileName);
+                        showDebug("✅ 成功呼叫 Java! 傳送檔名: " + fileName);
+                    } catch (error) {
+                        showDebug("❌ 呼叫 Java 失敗: " + error.message);
+                    }
+                } else {
+                    showDebug("⚠️ 警告：這個節點的 fileName 是空的！");
+                }
+            } else {
+                showDebug("🚨 嚴重錯誤：window.javaApp 橋樑不存在！");
+            }
+        });
+
+        cy.on('mouseover', 'node', function(evt){
+            var node = evt.target;
+            var tooltip = document.getElementById('tooltip');
+            tooltip.innerHTML = "類型: " + node.data('type') + "<br>名稱: " + node.data('label');
+            tooltip.style.display = 'block';
+        });
+
+        cy.on('mouseout', 'node', function(evt){
+            document.getElementById('tooltip').style.display = 'none';
+        });
+    }
+</script>
+</body>
+</html>

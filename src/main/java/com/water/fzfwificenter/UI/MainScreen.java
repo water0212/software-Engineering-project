@@ -1,130 +1,218 @@
 package com.water.fzfwificenter.UI;
 
-import com.water.fzfwificenter.analyzer.AnalysisException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.water.fzfwificenter.analyzer.AnalyzerFactory;
+import com.water.fzfwificenter.analyzer.LanguageAnalyzer;
+import com.water.fzfwificenter.analyzer.ProgrammingLanguage;
+import javafx.application.Platform;
+import javafx.concurrent.Worker;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
+import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.web.WebEngine;
+import javafx.scene.web.WebView;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-
-import com.water.fzfwificenter.analyzer.AnalyzerFactory;
-import com.water.fzfwificenter.analyzer.LanguageAnalyzer;
-import com.water.fzfwificenter.analyzer.ProgrammingLanguage;
+import netscape.javascript.JSObject;
 
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class MainScreen {
 
     private Stage stage;
+    private WebEngine webEngine;
+    private TextArea codeArea;
+    private final ObjectMapper mapper = new ObjectMapper();
+    private final Map<String, String> fileCache = new HashMap<>();
+
+    // 🚨 終極防護：宣告一個類別層級的變數來「死死抓住」橋樑，防止被 Java GC (垃圾回收)
+    private JavaBridge javaBridge;
 
     public MainScreen(Stage stage) {
         this.stage = stage;
     }
 
     public Scene createScene() {
-        Label titleLabel = new Label("Java 程式碼分析工具");
-        titleLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
+        BorderPane root = new BorderPane();
 
-        // 1. 選擇「檔案」的按鈕
-        Button importFileBtn = new Button("匯入單一/多個檔案");
-        importFileBtn.setOnAction(event -> handleImportFiles());
+        // --- 1. 上方控制列 ---
+        Label titleLabel = new Label("FZF Code Analyzer");
+        titleLabel.getStyleClass().add("title-label");
 
-        // 2. 選擇「資料夾」的按鈕
-        Button importDirBtn = new Button("匯入整個資料夾");
-        importDirBtn.setOnAction(event -> handleImportDirectory());
+        Button fileBtn = new Button("\uD83D\uDCC4 匯入檔案");
+        fileBtn.getStyleClass().add("primary-btn");
+        fileBtn.setOnAction(e -> handleImportFiles());
 
-        HBox buttonBox = new HBox(15, importFileBtn, importDirBtn);
-        buttonBox.setAlignment(Pos.CENTER);
+        Button dirBtn = new Button("\uD83D\uDCC1 匯入資料夾");
+        dirBtn.getStyleClass().add("primary-btn");
+        dirBtn.setOnAction(e -> handleImportDirectory());
 
-        VBox layout = new VBox(30, titleLabel, buttonBox);
-        layout.setAlignment(Pos.CENTER);
+        HBox topBar = new HBox(15, titleLabel, fileBtn, dirBtn);
+        topBar.setAlignment(Pos.CENTER_LEFT);
+        topBar.getStyleClass().add("top-bar");
+        root.setTop(topBar);
 
-        return new Scene(layout, 600, 400);
-    }
+        // --- 2. 中央：WebView ---
+        WebView webView = new WebView();
+        webEngine = webView.getEngine();
+        webEngine.load(getClass().getResource("/index.html").toExternalForm());
 
-    // 處理選擇檔案 (支援多選)
-    private void handleImportFiles() {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("請選擇 Java 檔案");
-        // 限制只能選 .java 檔
-        fileChooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("Java Files", "*.java")
-        );
+        // 🚨 關鍵修正：將橋樑實體化並「存入我們宣告的變數」中，再傳給 JS
+        webEngine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
+            if (newState == Worker.State.SUCCEEDED) {
+                JSObject window = (JSObject) webEngine.executeScript("window");
 
-        List<File> selectedFiles = fileChooser.showOpenMultipleDialog(stage);
-
-        if (selectedFiles != null && !selectedFiles.isEmpty()) {
-            System.out.println("選取了 " + selectedFiles.size() + " 個檔案，開始處理...");
-            processFiles(selectedFiles);
-        }
-    }
-
-    // 處理選擇資料夾
-    private void handleImportDirectory() {
-        DirectoryChooser directoryChooser = new DirectoryChooser();
-        directoryChooser.setTitle("請選擇 Java 專案資料夾");
-        File selectedDirectory = directoryChooser.showDialog(stage);
-
-        if (selectedDirectory != null) {
-            System.out.println("選取了資料夾: " + selectedDirectory.getAbsolutePath());
-            try {
-                // 找出資料夾內所有的 .java 檔
-                List<File> javaFiles;
-                try (Stream<Path> paths = Files.walk(selectedDirectory.toPath())) {
-                    javaFiles = paths
-                            .filter(Files::isRegularFile)
-                            .filter(path -> path.toString().endsWith(".java"))
-                            .map(Path::toFile)
-                            .collect(Collectors.toList());
-                }
-
-                System.out.println("在資料夾中找到 " + javaFiles.size() + " 個 Java 檔案，開始處理...");
-                processFiles(javaFiles);
-
-            } catch (Exception e) {
-                System.err.println("讀取資料夾失敗: " + e.getMessage());
+                // 將實體存入全域變數，Java 就不會把它當垃圾丟掉
+                this.javaBridge = new JavaBridge(this);
+                window.setMember("javaApp", this.javaBridge);
             }
+        });
+
+        // 在 createScene 裡面加入這段，用來接收 JS 的 alert 除錯訊息
+        webEngine.setOnAlert(event -> {
+            System.out.println("[來自網頁的 Debug 訊息]: " + event.getData());
+        });
+
+        root.setCenter(webView);
+
+        // --- 3. 右側：程式碼檢視區 ---
+        codeArea = new TextArea();
+        codeArea.setPromptText("// 點擊左側節點以檢視原始碼...");
+        codeArea.setPrefWidth(400);
+        codeArea.setEditable(false);
+        root.setRight(codeArea);
+
+        Scene scene = new Scene(root, 1200, 800);
+
+        // 載入 CSS
+        String cssUrl = getClass().getResource("/style.css").toExternalForm();
+        scene.getStylesheets().add(cssUrl);
+
+        return scene;
+    }
+
+    private void handleImportFiles() {
+        FileChooser chooser = new FileChooser();
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Java Files", "*.java"));
+        List<File> files = chooser.showOpenMultipleDialog(stage);
+        if (files != null) processAndDisplay(files);
+    }
+
+    private void handleImportDirectory() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        File dir = chooser.showDialog(stage);
+        if (dir != null) {
+            try (Stream<Path> paths = Files.walk(dir.toPath())) {
+                List<File> files = paths.filter(p -> p.toString().endsWith(".java"))
+                        .map(Path::toFile)
+                        .collect(Collectors.toList());
+                processAndDisplay(files);
+            } catch (Exception e) { e.printStackTrace(); }
         }
     }
 
-    // 核心處理邏輯：將檔案轉成 String 並丟給 Analyzer
-    private void processFiles(List<File> files) {
-        // 使用你的工廠取得 Java 解析器
+    // 實際串接邏輯
+    private void processAndDisplay(List<File> files) {
         LanguageAnalyzer analyzer = AnalyzerFactory.getAnalyzer(ProgrammingLanguage.JAVA);
+        List<Map<String, Object>> allElements = new ArrayList<>();
+        fileCache.clear();
 
         for (File file : files) {
             try {
-                // 1. 將檔案讀取為 String
-                String codeString = Files.readString(file.toPath());
+                String code = Files.readString(file.toPath());
+                // 1. 丟給你的 JavaCodeAnalyzer 產生 JSON 字串
+                String jsonStr = analyzer.analyze(code);
 
-                // 2. 丟給你寫好的 JavaCodeAnalyzer 處理
-                String jsonResult = analyzer.analyze(codeString);
+                // 2. 轉換為 Cytoscape 格式
+                allElements.addAll(convertToGraphElements(jsonStr, file.getName()));
 
-                // 3. 印出結果 (或後續丟給 UI 顯示)
-                System.out.println("=== 檔案: " + file.getName() + " 分析結果 ===");
-                System.out.println(jsonResult);
-                System.out.println("------------------------------------------------");
+                // 暫存原始碼
+                fileCache.put(file.getName(), code);
 
-            } catch (AnalysisException e) {
-                String errorMessage = e.getMessage();
+            } catch (Exception e) {
+                System.err.println("分析失敗: " + file.getName());
+            }
+        }
 
-                if (e.getCause() != null && e.getCause().getMessage() != null) {
-                    errorMessage += " | 原因: " + e.getCause().getMessage();
-                }
-                System.err.println("處理檔案 " + file.getName() + " 時發生錯誤: " + errorMessage);
-            } catch (Exception e){
-                    System.err.println("處理檔案 " + file.getName() + " 時發生錯誤: " + e.getMessage());
+        // 3. 轉換成最終 JSON 並丟給 WebView
+        try {
+            String finalElementsJson = mapper.writeValueAsString(allElements);
+            webEngine.executeScript("renderGraph(" + finalElementsJson + ")");
+        } catch (Exception e) { e.printStackTrace(); }
+    }
+
+    // 將你的 AnalysisResult 結構轉為點線結構
+    private List<Map<String, Object>> convertToGraphElements(String jsonStr, String fileName) throws Exception {
+        List<Map<String, Object>> elements = new ArrayList<>();
+        JsonNode root = mapper.readTree(jsonStr);
+        JsonNode classes = root.get("classes");
+
+        if (classes != null && classes.isArray()) {
+            for (JsonNode cls : classes) {
+                String className = cls.get("className").asText();
+
+                // 建立 Class 節點
+                elements.add(createNode(className, className, "class", fileName));
+
+                JsonNode methods = cls.get("methods");
+                if (methods != null && methods.isArray()) {
+                    for (JsonNode m : methods) {
+                        String methodName = m.get("methodName").asText();
+                        String methodId = className + "_" + methodName;
+
+                        // 建立 Method 節點
+                        elements.add(createNode(methodId, methodName, "method", fileName));
+                        // 建立包含關係連線
+                        elements.add(createEdge(className, methodId));
+                    }
                 }
             }
+        }
+        return elements;
+    }
+
+    private Map<String, Object> createNode(String id, String label, String type, String fileName) {
+        Map<String, Object> node = new HashMap<>();
+        Map<String, Object> data = new HashMap<>();
+        data.put("id", id);
+        data.put("label", label);
+        data.put("type", type);
+        data.put("fileName", fileName); // 存入檔名，方便點擊時找程式碼
+        node.put("data", data);
+        return node;
+    }
+
+    private Map<String, Object> createEdge(String source, String target) {
+        Map<String, Object> edge = new HashMap<>();
+        Map<String, Object> data = new HashMap<>();
+        data.put("source", source);
+        data.put("target", target);
+        edge.put("data", data);
+        return edge;
+    }
+
+    // 供 JavaScript 呼叫的方法：顯示程式碼
+    public void showCodeInArea(String fileName) {
+        String code = fileCache.get(fileName);
+        if (code != null) {
+            codeArea.setText(code);
+        } else {
+            // 如果找不到檔案，顯示錯誤訊息，避免畫面一片空白
+            codeArea.setText("// 找不到對應的原始碼: " + fileName);
+        }
     }
 }

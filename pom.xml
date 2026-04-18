@@ -65,6 +65,11 @@
             <version>2.10.1</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-web</artifactId>
+            <version>17.0.6</version> </dependency>
+
     </dependencies>
 
     <build>
