@@ -17,6 +17,7 @@ import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.water.fzfwificenter.model.AnalysisResult;
 import com.water.fzfwificenter.model.ClassInfo;
 import com.water.fzfwificenter.model.MethodInfo;
+import com.water.fzfwificenter.model.FieldInfo;
 import com.water.fzfwificenter.model.ParameterInfo;
 import com.water.fzfwificenter.model.MethodCallInfo;
 
@@ -123,6 +124,10 @@ public class JavaCodeAnalyzer implements LanguageAnalyzer {
                     }
                 }
 
+                for (FieldInfo fieldInfo : extractFields(classDecl)) {
+                    classInfo.addField(fieldInfo);
+                }
+
                 List<String> currentClassMethodNames = getMethodNames(classDecl);
 
                 for (MethodDeclaration methodDecl : classDecl.getMethods()) {
@@ -140,7 +145,6 @@ public class JavaCodeAnalyzer implements LanguageAnalyzer {
                                 parameter.getType().asString(),
                                 parameter.getNameAsString()
                         );
-
                         for (AnnotationExpr annotation : parameter.getAnnotations()) {
                             parameterInfo.addAnnotation(annotation.getNameAsString());
                         }
@@ -290,6 +294,32 @@ public class JavaCodeAnalyzer implements LanguageAnalyzer {
     private boolean isKnownClassName(String name, List<String> classNames) {
         return classNames.contains(name);
     }
+    private List<FieldInfo> extractFields(ClassOrInterfaceDeclaration classDecl) {
+        List<FieldInfo> fields = new ArrayList<>();
+
+        for (FieldDeclaration fieldDecl : classDecl.getFields()) {
+            for (VariableDeclarator variable : fieldDecl.getVariables()) {
+                FieldInfo fieldInfo = new FieldInfo(
+                        variable.getNameAsString(),
+                        variable.getType().asString()
+                );
+
+                // modifiers
+                fieldDecl.getModifiers().forEach(modifier ->
+                        fieldInfo.addModifier(modifier.getKeyword().asString())
+                );
+
+                // annotations
+                for (AnnotationExpr annotation : fieldDecl.getAnnotations()) {
+                    fieldInfo.addAnnotation(annotation.getNameAsString());
+                }
+
+                fields.add(fieldInfo);
+            }
+        }
+
+        return fields;
+    }
 
 
     private void validateCode(String code) {
@@ -319,6 +349,27 @@ public class JavaCodeAnalyzer implements LanguageAnalyzer {
 
             if (!classInfo.getAnnotations().isEmpty()) {
                 sb.append("  Annotations: ").append(classInfo.getAnnotations()).append("\n");
+            }
+
+            if (!classInfo.getFields().isEmpty()) {
+                sb.append("  Fields:\n");
+                for (FieldInfo field : classInfo.getFields()) {
+                    sb.append("    - ");
+
+                    if (!field.getModifiers().isEmpty()) {
+                        sb.append(field.getModifiers()).append(" ");
+                    }
+
+                    sb.append(field.getType())
+                            .append(" ")
+                            .append(field.getName());
+
+                    if (!field.getAnnotations().isEmpty()) {
+                        sb.append(" | annotations=").append(field.getAnnotations());
+                    }
+
+                    sb.append("\n");
+                }
             }
 
             for (MethodInfo method : classInfo.getMethods()) {

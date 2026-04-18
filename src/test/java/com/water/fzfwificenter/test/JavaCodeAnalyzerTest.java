@@ -459,6 +459,78 @@ public class JavaCodeAnalyzerTest {
         assertEquals("instance", firstCall.getCallType());
         assertTrue(firstCall.isResolved());
     }
+    @Test
+    void extractClassRelations_shouldExtractFields() {
+        String code = """
+            public class UserService {
+                private String appName;
+                protected int count;
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        List<ClassInfo> classes = analyzer.extractClassRelations(code);
+
+        assertEquals(1, classes.size());
+
+        ClassInfo classInfo = classes.get(0);
+        assertEquals(2, classInfo.getFields().size());
+
+        FieldInfo firstField = classInfo.getFields().get(0);
+        assertEquals("appName", firstField.getName());
+        assertEquals("String", firstField.getType());
+        assertTrue(firstField.getModifiers().contains("private"));
+
+        FieldInfo secondField = classInfo.getFields().get(1);
+        assertEquals("count", secondField.getName());
+        assertEquals("int", secondField.getType());
+        assertTrue(secondField.getModifiers().contains("protected"));
+    }
+    @Test
+    void extractClassRelations_shouldExtractFieldAnnotations() {
+        String code = """
+            public class UserService {
+            
+                @Autowired
+                private UserRepository repository;
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        List<ClassInfo> classes = analyzer.extractClassRelations(code);
+
+        ClassInfo classInfo = classes.get(0);
+        assertEquals(1, classInfo.getFields().size());
+
+        FieldInfo field = classInfo.getFields().get(0);
+        assertEquals("repository", field.getName());
+        assertEquals("UserRepository", field.getType());
+        assertTrue(field.getModifiers().contains("private"));
+        assertTrue(field.getAnnotations().contains("Autowired"));
+    }
+    @Test
+    void extractClassRelations_shouldExtractMultipleVariablesFromOneFieldDeclaration() {
+        String code = """
+            public class Sample {
+                private String firstName, lastName;
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        List<ClassInfo> classes = analyzer.extractClassRelations(code);
+
+        ClassInfo classInfo = classes.get(0);
+        assertEquals(2, classInfo.getFields().size());
+
+        FieldInfo firstField = classInfo.getFields().get(0);
+        FieldInfo secondField = classInfo.getFields().get(1);
+
+        assertEquals("firstName", firstField.getName());
+        assertEquals("String", firstField.getType());
+
+        assertEquals("lastName", secondField.getName());
+        assertEquals("String", secondField.getType());
+    }
 
 
 }

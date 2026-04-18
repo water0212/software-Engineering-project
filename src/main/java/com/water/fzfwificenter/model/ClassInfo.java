@@ -11,6 +11,7 @@ public class ClassInfo {
     private List<String> extendsInterfaces = new ArrayList<>();
     private List<String> implementsInterfaces = new ArrayList<>();
     private List<String> annotations = new ArrayList<>();
+    private List<FieldInfo> fields = new ArrayList<>();
     private List<MethodInfo> methods = new ArrayList<>();
 
     public ClassInfo() {
@@ -91,4 +92,17 @@ public class ClassInfo {
     public void addMethod(MethodInfo method) {
         methods.add(method);
     }
+
+    public List<FieldInfo> getFields() {
+        return fields;
+    }
+
+    public void setFields(List<FieldInfo> fields) {
+        this.fields = fields;
+    }
+
+    public void addField(FieldInfo field) {
+        fields.add(field);
+    }
+
 }

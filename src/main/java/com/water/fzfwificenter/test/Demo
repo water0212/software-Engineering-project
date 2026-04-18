@@ -1,0 +1,78 @@
+package demo;
+
+@interface ServiceMarker {}
+@interface NotNull {}
+
+interface Loggable {
+    void CALL();
+}
+
+interface Auditable extends Loggable {
+    void audit();
+}
+
+class BaseService {
+    public void CALL() {
+        System.out.println("BaseService CALL");
+    }
+
+    public void baseOnly() {
+        System.out.println("baseOnly");
+    }
+}
+
+@ServiceMarker
+public class A extends BaseService implements Auditable {
+
+    private B b;
+    private String appName;
+
+    @Override
+    public void CALL() {
+        System.out.println("A CALL");
+    }
+
+    @Override
+    public void audit() {
+        System.out.println("audit");
+    }
+
+    public static void main(String[] args) {
+        A a = new A();
+        B localB = new B();
+
+        a.start(localB);
+        B.staticCall();
+    }
+
+    public void start(@NotNull B inputB) {
+        b.CALL();          // field instance call -> B
+        inputB.CALL();     // parameter instance call -> B
+        this.CALL();       // this call -> A
+        CALL();            // implicit-this -> A
+        super.CALL();      // super call -> BaseService
+        B.staticCall();    // static call -> B
+        helper();          // implicit-this -> A
+    }
+
+    private void helper() {
+        System.out.println(appName);
+    }
+}
+
+class B {
+    private A a;
+
+    public void CALL() {
+        a.CALL();          // field instance call -> A
+        helperB();
+    }
+
+    public static void staticCall() {
+        System.out.println("staticCall");
+    }
+
+    private void helperB() {
+        System.out.println("helperB");
+    }
+}
