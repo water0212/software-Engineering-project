@@ -23,7 +23,14 @@ public class JavaCodeAnalyzer implements LanguageAnalyzer {
     public ProgrammingLanguage getLanguage() {
         return ProgrammingLanguage.JAVA;
     }
-
+    /**
+     * 接收 原始碼字串，分析 class、method 與 parameter 關係，
+     * 並回傳 JSON 格式結果。
+     *
+     * @param code 原始碼字串
+     * @return JSON 格式分析結果
+     * @throws AnalysisException 當輸入為空、解析失敗或 JSON 轉換失敗時拋出
+     */
     @Override
     public String analyze(String code) throws AnalysisException {
 //        AnalysisResult result = analyzeToResult(code);
@@ -43,7 +50,14 @@ public class JavaCodeAnalyzer implements LanguageAnalyzer {
             throw new AnalysisException("Java 程式碼解析失敗", e, AnalysisErrorType.ANALYSIS_ERROR);
         }
     }
-
+    /**
+     * 接收 Java 原始碼字串，分析 class、method 與 parameter 關係，
+     * 並回傳 JSON 格式結果。
+     *
+     * @param code Java 原始碼字串
+     * @return JSON 格式分析結果
+     * @throws AnalysisException 當輸入為空、解析失敗或 JSON 轉換失敗時拋出
+     */
     public String analyzeToJson(String code) {
         AnalysisResult result = analyzeToResult(code);
 

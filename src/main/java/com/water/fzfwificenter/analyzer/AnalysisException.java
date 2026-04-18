@@ -16,4 +16,5 @@ public class AnalysisException extends RuntimeException {
     public AnalysisErrorType getErrorType() {
         return errorType;
     }
+
 }

@@ -116,10 +116,15 @@ public class MainScreen {
                 System.out.println("------------------------------------------------");
 
             } catch (AnalysisException e) {
-                System.err.println("處理檔案 " + file.getName() + " 時發生錯誤: " + e.getMessage());
+                String errorMessage = e.getMessage();
+
+                if (e.getCause() != null && e.getCause().getMessage() != null) {
+                    errorMessage += " | 原因: " + e.getCause().getMessage();
+                }
+                System.err.println("處理檔案 " + file.getName() + " 時發生錯誤: " + errorMessage);
             } catch (Exception e){
-                System.err.println("處理檔案 " + file.getName() + " 時發生錯誤: " + e.getMessage());
+                    System.err.println("處理檔案 " + file.getName() + " 時發生錯誤: " + e.getMessage());
+                }
             }
-        }
     }
 }
