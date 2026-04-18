@@ -1,6 +1,9 @@
 package com.water.fzfwificenter.UI;
 
-import com.water.fzfwificenter.analyzer.CodeAnalyzer;
+import com.water.fzfwificenter.analyzer.AnalyzerFactory;
+import com.water.fzfwificenter.analyzer.LanguageAnalyzer;
+import com.water.fzfwificenter.analyzer.ProgrammingLanguage;
+import com.water.fzfwificenter.analyzer.AnalysisException;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -22,12 +25,24 @@ public class AnalyzerTestView implements AppView {
         outputArea.setEditable(false);
         outputArea.setPrefHeight(250);
 
-        CodeAnalyzer analyzer = new CodeAnalyzer();
+        LanguageAnalyzer analyzer = AnalyzerFactory.getAnalyzer(ProgrammingLanguage.JAVA);
 
         analyzeButton.setOnAction(event -> {
-            String code = inputArea.getText();
-            String result = analyzer.analyze(code);
-            outputArea.setText(result);
+            try{
+                String code = inputArea.getText();
+                String result = analyzer.analyze(code);
+                outputArea.setText(result);
+            }catch(AnalysisException e){
+                switch (e.getErrorType()) {
+                    case EMPTY_INPUT -> outputArea.setText("請先輸入程式碼");
+                    case Analysis_ERROR -> outputArea.setText("程式碼格式有誤，無法解析");
+                    case UNSUPPORTED_LANGUAGE -> outputArea.setText("目前不支援此語言");
+                }
+            }catch (Exception e) {
+                outputArea.setText("系統發生未預期錯誤");
+                e.printStackTrace();
+            }
+
         });
 
         VBox root = new VBox(10, inputArea, analyzeButton, outputArea);
