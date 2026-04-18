@@ -1,10 +1,13 @@
 package com.water.fzfwificenter.analyzer;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
+import com.water.fzfwificenter.model.AnalysisResult;
 import com.water.fzfwificenter.model.ClassInfo;
 import com.water.fzfwificenter.model.MethodInfo;
 import com.water.fzfwificenter.model.ParameterInfo;
@@ -14,6 +17,8 @@ import java.util.List;
 
 public class JavaCodeAnalyzer implements LanguageAnalyzer {
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
     @Override
     public ProgrammingLanguage getLanguage() {
         return ProgrammingLanguage.JAVA;
@@ -21,15 +26,33 @@ public class JavaCodeAnalyzer implements LanguageAnalyzer {
 
     @Override
     public String analyze(String code) throws AnalysisException {
+//        AnalysisResult result = analyzeToResult(code);
+//        return formatResult(result);
+        return analyzeToJson(code);
+    }
+
+    public AnalysisResult analyzeToResult(String code) {
         validateCode(code);
 
         try {
-            List<ClassInfo> classInfos = extractClassRelations(code);
-            return formatClassRelations(classInfos);
+            List<ClassInfo> classes = extractClassRelations(code);
+            return new AnalysisResult(getLanguage().name(), classes);
         } catch (AnalysisException e) {
             throw e;
         } catch (Exception e) {
-            throw new AnalysisException("Java 程式碼解析失敗", e, AnalysisErrorType.ANALYSIS_ERROR_TYPE);
+            throw new AnalysisException("Java 程式碼解析失敗", e, AnalysisErrorType.ANALYSIS_ERROR);
+        }
+    }
+
+    public String analyzeToJson(String code) {
+        AnalysisResult result = analyzeToResult(code);
+
+        try {
+            return objectMapper
+                    .writerWithDefaultPrettyPrinter()
+                    .writeValueAsString(result);
+        } catch (JsonProcessingException e) {
+            throw new AnalysisException("JSON 轉換失敗", e, AnalysisErrorType.ANALYSIS_ERROR);
         }
     }
 
@@ -65,7 +88,7 @@ public class JavaCodeAnalyzer implements LanguageAnalyzer {
 
             return classInfos;
         } catch (Exception e) {
-            throw new AnalysisException("Java 程式碼解析失敗", e, AnalysisErrorType.ANALYSIS_ERROR_TYPE);
+            throw new AnalysisException("Java 程式碼解析失敗", e, AnalysisErrorType.ANALYSIS_ERROR);
         }
     }
 
@@ -75,46 +98,34 @@ public class JavaCodeAnalyzer implements LanguageAnalyzer {
         }
     }
 
-    private String formatClassRelations(List<ClassInfo> classInfos) {
-        StringBuilder result = new StringBuilder();
+    private String formatResult(AnalysisResult result) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Language: ").append(result.getLanguage()).append("\n");
 
-        if (classInfos.isEmpty()) {
-            result.append("未找到任何 class 或 interface。\n");
-            return result.toString();
-        }
+        for (ClassInfo classInfo : result.getClasses()) {
+            sb.append("Class: ").append(classInfo.getClassName()).append("\n");
 
-        for (ClassInfo classInfo : classInfos) {
-            result.append("Class: ").append(classInfo.getClassName()).append("\n");
+            for (MethodInfo method : classInfo.getMethods()) {
+                sb.append("  Method: ")
+                        .append(method.getReturnType())
+                        .append(" ")
+                        .append(method.getMethodName())
+                        .append("(");
 
-            if (classInfo.getMethods().isEmpty()) {
-                result.append("  Methods: 無\n");
-            } else {
-                for (MethodInfo method : classInfo.getMethods()) {
-                    result.append("  Method: ")
-                            .append(method.getReturnType())
-                            .append(" ")
-                            .append(method.getMethodName())
-                            .append("(");
+                List<ParameterInfo> parameters = method.getParameters();
+                for (int i = 0; i < parameters.size(); i++) {
+                    ParameterInfo p = parameters.get(i);
+                    sb.append(p.getType()).append(" ").append(p.getName());
 
-                    List<ParameterInfo> parameters = method.getParameters();
-                    for (int i = 0; i < parameters.size(); i++) {
-                        ParameterInfo parameter = parameters.get(i);
-                        result.append(parameter.getType())
-                                .append(" ")
-                                .append(parameter.getName());
-
-                        if (i < parameters.size() - 1) {
-                            result.append(", ");
-                        }
+                    if (i < parameters.size() - 1) {
+                        sb.append(", ");
                     }
-
-                    result.append(")\n");
                 }
-            }
 
-            result.append("\n");
+                sb.append(")\n");
+            }
         }
 
-        return result.toString();
+        return sb.toString();
     }
 }

@@ -5,9 +5,12 @@ import java.util.List;
 
 public class MethodInfo {
 
-    private final String methodName;
-    private final String returnType;
-    private final List<ParameterInfo> parameters = new ArrayList<>();
+    private String methodName;
+    private String returnType;
+    private List<ParameterInfo> parameters = new ArrayList<>();
+
+    public MethodInfo() {
+    }
 
     public MethodInfo(String methodName, String returnType) {
         this.methodName = methodName;
@@ -18,12 +21,24 @@ public class MethodInfo {
         return methodName;
     }
 
+    public void setMethodName(String methodName) {
+        this.methodName = methodName;
+    }
+
     public String getReturnType() {
         return returnType;
     }
 
+    public void setReturnType(String returnType) {
+        this.returnType = returnType;
+    }
+
     public List<ParameterInfo> getParameters() {
         return parameters;
+    }
+
+    public void setParameters(List<ParameterInfo> parameters) {
+        this.parameters = parameters;
     }
 
     public void addParameter(ParameterInfo parameter) {

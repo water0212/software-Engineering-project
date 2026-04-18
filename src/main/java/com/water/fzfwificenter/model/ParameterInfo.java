@@ -2,8 +2,11 @@ package com.water.fzfwificenter.model;
 
 public class ParameterInfo {
 
-    private final String type;
-    private final String name;
+    private String type;
+    private String name;
+
+    public ParameterInfo() {
+    }
 
     public ParameterInfo(String type, String name) {
         this.type = type;
@@ -14,7 +17,15 @@ public class ParameterInfo {
         return type;
     }
 
+    public void setType(String type) {
+        this.type = type;
+    }
+
     public String getName() {
         return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 }

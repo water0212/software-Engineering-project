@@ -6,6 +6,7 @@ import com.water.fzfwificenter.analyzer.AnalyzerFactory;
 import com.water.fzfwificenter.analyzer.JavaCodeAnalyzer;
 import com.water.fzfwificenter.analyzer.LanguageAnalyzer;
 import com.water.fzfwificenter.analyzer.ProgrammingLanguage;
+import com.water.fzfwificenter.model.AnalysisResult;
 import com.water.fzfwificenter.model.ClassInfo;
 import com.water.fzfwificenter.model.MethodInfo;
 import org.junit.jupiter.api.Test;
@@ -56,7 +57,7 @@ public class JavaCodeAnalyzerTest {
                 () -> analyzer.analyze(invalidCode)
         );
 
-        assertEquals(AnalysisErrorType.ANALYSIS_ERROR_TYPE, exception.getErrorType());
+        assertEquals(AnalysisErrorType.ANALYSIS_ERROR, exception.getErrorType());
     }
 
     @Test
@@ -172,4 +173,48 @@ public class JavaCodeAnalyzerTest {
         assertEquals("methodA", classes.get(0).getMethods().get(0).getMethodName());
         assertEquals("methodB", classes.get(1).getMethods().get(0).getMethodName());
     }
+    @Test
+    void analyzeToJson_shouldReturnValidJson() {
+        String code = """
+            public class UserService {
+                public String login(String username, String password) {
+                    return "ok";
+                }
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        String json = analyzer.analyzeToJson(code);
+
+        assertNotNull(json);
+        assertFalse(json.isBlank());
+        assertTrue(json.contains("\"language\""));
+        assertTrue(json.contains("\"JAVA\""));
+        assertTrue(json.contains("\"className\""));
+        assertTrue(json.contains("\"UserService\""));
+        assertTrue(json.contains("\"methodName\""));
+        assertTrue(json.contains("\"login\""));
+        assertTrue(json.contains("\"parameters\""));
+        assertTrue(json.contains("\"username\""));
+        assertTrue(json.contains("\"password\""));
+    }
+    @Test
+    void analyzeToResult_shouldReturnStructuredResult() {
+        String code = """
+            public class UserService {
+                public String login(String username, String password) {
+                    return "ok";
+                }
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        AnalysisResult result = analyzer.analyzeToResult(code);
+
+        assertEquals("JAVA", result.getLanguage());
+        assertEquals(1, result.getClasses().size());
+        assertEquals("UserService", result.getClasses().get(0).getClassName());
+        assertEquals(1, result.getClasses().get(0).getMethods().size());
+    }
+
 }

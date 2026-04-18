@@ -27,7 +27,7 @@ public class TestAnalyzer {
         }catch(AnalysisException e){
             switch (e.getErrorType()) {
                 case EMPTY_INPUT -> result = ("請先輸入程式碼");
-                case ANALYSIS_ERROR_TYPE -> result = ("程式碼格式有誤，無法解析");
+                case ANALYSIS_ERROR -> result = ("程式碼格式有誤，無法解析");
                 case UNSUPPORTED_LANGUAGE -> result = ("目前不支援此語言");
             }
         }
