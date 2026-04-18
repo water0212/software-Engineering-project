@@ -1,5 +1,6 @@
 package com.water.fzfwificenter.UI;
 
+import com.water.fzfwificenter.analyzer.AnalysisException;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -114,7 +115,9 @@ public class MainScreen {
                 System.out.println(jsonResult);
                 System.out.println("------------------------------------------------");
 
-            } catch (Exception e) {
+            } catch (AnalysisException e) {
+                System.err.println("處理檔案 " + file.getName() + " 時發生錯誤: " + e.getMessage());
+            } catch (Exception e){
                 System.err.println("處理檔案 " + file.getName() + " 時發生錯誤: " + e.getMessage());
             }
         }
