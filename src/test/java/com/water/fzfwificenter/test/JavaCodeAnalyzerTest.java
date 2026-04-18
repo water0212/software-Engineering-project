@@ -6,9 +6,7 @@ import com.water.fzfwificenter.analyzer.AnalyzerFactory;
 import com.water.fzfwificenter.analyzer.JavaCodeAnalyzer;
 import com.water.fzfwificenter.analyzer.LanguageAnalyzer;
 import com.water.fzfwificenter.analyzer.ProgrammingLanguage;
-import com.water.fzfwificenter.model.AnalysisResult;
-import com.water.fzfwificenter.model.ClassInfo;
-import com.water.fzfwificenter.model.MethodInfo;
+import com.water.fzfwificenter.model.*;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -216,5 +214,251 @@ public class JavaCodeAnalyzerTest {
         assertEquals("UserService", result.getClasses().get(0).getClassName());
         assertEquals(1, result.getClasses().get(0).getMethods().size());
     }
+
+    @Test
+    void extractClassRelations_shouldExtractCalledMethods() {
+        String code = """
+            public class UserService {
+                public void login(String username) {
+                    validate(username);
+                    saveLog(username);
+                    System.out.println(username);
+                }
+
+                private void validate(String username) {
+                }
+
+                private void saveLog(String username) {
+                }
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        List<ClassInfo> classes = analyzer.extractClassRelations(code);
+
+        assertEquals(1, classes.size());
+
+        ClassInfo classInfo = classes.get(0);
+        assertEquals("UserService", classInfo.getClassName());
+
+        MethodInfo loginMethod = classInfo.getMethods().get(0);
+        assertEquals("login", loginMethod.getMethodName());
+
+        assertTrue(loginMethod.getCalledMethods().contains("validate"));
+        assertTrue(loginMethod.getCalledMethods().contains("saveLog"));
+        assertTrue(loginMethod.getCalledMethods().contains("println"));
+    }
+
+    @Test
+    void analyzeToJson_shouldContainCalledMethods() {
+        String code = """
+            public class UserService {
+                public void login(String username) {
+                    validate(username);
+                }
+
+                private void validate(String username) {
+                }
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        String json = analyzer.analyzeToJson(code);
+
+        assertTrue(json.contains("\"calledMethods\""));
+        assertTrue(json.contains("\"validate\""));
+    }
+    @Test
+    void extractClassRelations_shouldExtractExtendsAndImplements() {
+        String code = """
+            public class AdminService extends UserService implements Loggable, Auditable {
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        List<ClassInfo> classes = analyzer.extractClassRelations(code);
+
+        assertEquals(1, classes.size());
+
+        ClassInfo classInfo = classes.get(0);
+        assertEquals("AdminService", classInfo.getClassName());
+        assertEquals("UserService", classInfo.getExtendsClass());
+        assertTrue(classInfo.getImplementsInterfaces().contains("Loggable"));
+        assertTrue(classInfo.getImplementsInterfaces().contains("Auditable"));
+    }
+
+    @Test
+    void extractClassRelations_shouldExtractAnnotations() {
+        String code = """
+            @Service
+            public class UserService {
+
+                @Override
+                public String login(@NotNull String username) {
+                    return "ok";
+                }
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        List<ClassInfo> classes = analyzer.extractClassRelations(code);
+
+        assertEquals(1, classes.size());
+
+        ClassInfo classInfo = classes.get(0);
+        assertTrue(classInfo.getAnnotations().contains("Service"));
+
+        MethodInfo methodInfo = classInfo.getMethods().get(0);
+        assertEquals("login", methodInfo.getMethodName());
+        assertTrue(methodInfo.getAnnotations().contains("Override"));
+
+        ParameterInfo parameterInfo = methodInfo.getParameters().get(0);
+        assertEquals("username", parameterInfo.getName());
+        assertTrue(parameterInfo.getAnnotations().contains("NotNull"));
+    }
+
+    @Test
+    void extractClassRelations_shouldExtractAllNewFeatures() {
+        String code = """
+            @Service
+            public class AdminService extends UserService implements Loggable {
+
+                @Override
+                public String login(@NotNull String username) {
+                    validate(username);
+                    return "ok";
+                }
+
+                private void validate(String username) {
+                }
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        List<ClassInfo> classes = analyzer.extractClassRelations(code);
+
+        assertEquals(1, classes.size());
+
+        ClassInfo classInfo = classes.get(0);
+        assertEquals("AdminService", classInfo.getClassName());
+        assertEquals("UserService", classInfo.getExtendsClass());
+        assertTrue(classInfo.getImplementsInterfaces().contains("Loggable"));
+        assertTrue(classInfo.getAnnotations().contains("Service"));
+
+        MethodInfo methodInfo = classInfo.getMethods().get(0);
+        assertEquals("login", methodInfo.getMethodName());
+        assertTrue(methodInfo.getAnnotations().contains("Override"));
+        assertTrue(methodInfo.getCalledMethods().contains("validate"));
+
+        ParameterInfo parameterInfo = methodInfo.getParameters().get(0);
+        assertTrue(parameterInfo.getAnnotations().contains("NotNull"));
+    }
+    @Test
+    void extractClassRelations_shouldIdentifyClassTypeAndRelations() {
+        String code = """
+            public class AdminService extends UserService implements Loggable, Auditable {
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        List<ClassInfo> classes = analyzer.extractClassRelations(code);
+
+        assertEquals(1, classes.size());
+
+        ClassInfo classInfo = classes.get(0);
+        assertEquals("AdminService", classInfo.getClassName());
+        assertEquals("class", classInfo.getType());
+        assertEquals("UserService", classInfo.getExtendsClass());
+        assertTrue(classInfo.getImplementsInterfaces().contains("Loggable"));
+        assertTrue(classInfo.getImplementsInterfaces().contains("Auditable"));
+        assertTrue(classInfo.getExtendsInterfaces().isEmpty());
+    }
+
+    @Test
+    void extractClassRelations_shouldIdentifyInterfaceTypeAndExtendsInterfaces() {
+        String code = """
+            public interface AdvancedLoggable extends Loggable, Auditable {
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        List<ClassInfo> classes = analyzer.extractClassRelations(code);
+
+        assertEquals(1, classes.size());
+
+        ClassInfo classInfo = classes.get(0);
+        assertEquals("AdvancedLoggable", classInfo.getClassName());
+        assertEquals("interface", classInfo.getType());
+        assertNull(classInfo.getExtendsClass());
+        assertTrue(classInfo.getExtendsInterfaces().contains("Loggable"));
+        assertTrue(classInfo.getExtendsInterfaces().contains("Auditable"));
+        assertTrue(classInfo.getImplementsInterfaces().isEmpty());
+    }
+
+    @Test
+    void extractClassRelations_shouldHandleSimpleClass() {
+        String code = """
+            public class UserService {
+                public void login() {}
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        List<ClassInfo> classes = analyzer.extractClassRelations(code);
+
+        assertEquals(1, classes.size());
+
+        ClassInfo classInfo = classes.get(0);
+        assertEquals("UserService", classInfo.getClassName());
+        assertEquals("class", classInfo.getType());
+        assertNull(classInfo.getExtendsClass());
+        assertTrue(classInfo.getExtendsInterfaces().isEmpty());
+        assertTrue(classInfo.getImplementsInterfaces().isEmpty());
+    }
+
+    @Test
+    void extractClassRelations_shouldResolveMethodCallTargetClass() {
+        String code = """
+            class A {
+                B b;
+
+                void start() {
+                    b.CALL();
+                    this.CALL();
+                    CALL();
+                    B.staticCall();
+                }
+
+                void CALL() {}
+            }
+
+            class B {
+                void CALL() {}
+                static void staticCall() {}
+            }
+            """;
+
+        JavaCodeAnalyzer analyzer = new JavaCodeAnalyzer();
+        List<ClassInfo> classes = analyzer.extractClassRelations(code);
+
+        ClassInfo classA = classes.stream()
+                .filter(c -> c.getClassName().equals("A"))
+                .findFirst()
+                .orElseThrow();
+
+        MethodInfo startMethod = classA.getMethods().stream()
+                .filter(m -> m.getMethodName().equals("start"))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(4, startMethod.getCalledMethods().size());
+
+        MethodCallInfo firstCall = startMethod.getCalledMethods().get(0);
+        assertEquals("CALL", firstCall.getMethodName());
+        assertEquals("B", firstCall.getTargetClass());
+        assertEquals("instance", firstCall.getCallType());
+        assertTrue(firstCall.isResolved());
+    }
+
 
 }

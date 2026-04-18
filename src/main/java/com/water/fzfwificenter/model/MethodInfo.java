@@ -8,6 +8,8 @@ public class MethodInfo {
     private String methodName;
     private String returnType;
     private List<ParameterInfo> parameters = new ArrayList<>();
+    private List<MethodCallInfo> calledMethods = new ArrayList<>();
+    private List<String> annotations = new ArrayList<>();
 
     public MethodInfo() {
     }
@@ -43,5 +45,29 @@ public class MethodInfo {
 
     public void addParameter(ParameterInfo parameter) {
         parameters.add(parameter);
+    }
+
+    public List<MethodCallInfo> getCalledMethods() {
+        return calledMethods;
+    }
+
+    public void setCalledMethods(List<MethodCallInfo> calledMethods) {
+        this.calledMethods = calledMethods;
+    }
+
+    public void addCalledMethod(MethodCallInfo methodCallInfo) {
+        calledMethods.add(methodCallInfo);
+    }
+
+    public List<String> getAnnotations() {
+        return annotations;
+    }
+
+    public void setAnnotations(List<String> annotations) {
+        this.annotations = annotations;
+    }
+
+    public void addAnnotation(String annotationName) {
+        annotations.add(annotationName);
     }
 }

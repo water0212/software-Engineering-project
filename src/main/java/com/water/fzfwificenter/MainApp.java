@@ -16,7 +16,7 @@ public class MainApp extends Application {
 
     @Override
     public void start(Stage stage) {
-        MainScreen view = new MainScreen(stage);
+        AppView view = new AnalyzerTestView();
         stage.setTitle("JavaFX 測試入口");
         stage.setScene(view.createScene());
         stage.show();
