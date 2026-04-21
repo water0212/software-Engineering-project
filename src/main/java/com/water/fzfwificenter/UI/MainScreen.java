@@ -9,9 +9,7 @@ import javafx.application.Platform;
 import javafx.concurrent.Worker;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.TextArea;
+import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.web.WebEngine;
@@ -24,22 +22,19 @@ import netscape.javascript.JSObject;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class MainScreen {
 
-    private Stage stage;
+    private final Stage stage;
     private WebEngine webEngine;
     private TextArea codeArea;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Map<String, String> fileCache = new HashMap<>();
 
-    // 🚨 終極防護：宣告一個類別層級的變數來「死死抓住」橋樑，防止被 Java GC (垃圾回收)
+    // 🚨 重要：保持強引用，防止橋樑被 GC 掉
     private JavaBridge javaBridge;
 
     public MainScreen(Stage stage) {
@@ -48,6 +43,7 @@ public class MainScreen {
 
     public Scene createScene() {
         BorderPane root = new BorderPane();
+        root.getStyleClass().add("root");
 
         // --- 1. 上方控制列 ---
         Label titleLabel = new Label("FZF Code Analyzer");
@@ -61,47 +57,50 @@ public class MainScreen {
         dirBtn.getStyleClass().add("primary-btn");
         dirBtn.setOnAction(e -> handleImportDirectory());
 
-        HBox topBar = new HBox(15, titleLabel, fileBtn, dirBtn);
+        Button resetBtn = new Button("重置視角");
+        resetBtn.setOnAction(e -> webEngine.executeScript("cy.fit()"));
+
+        HBox topBar = new HBox(15, titleLabel, fileBtn, dirBtn, resetBtn);
         topBar.setAlignment(Pos.CENTER_LEFT);
         topBar.getStyleClass().add("top-bar");
         root.setTop(topBar);
 
-        // --- 2. 中央：WebView ---
+        // --- 2. WebView (圖表區) ---
         WebView webView = new WebView();
+        webView.setMinWidth(400);
         webEngine = webView.getEngine();
-        webEngine.load(getClass().getResource("/index.html").toExternalForm());
+        webEngine.load(Objects.requireNonNull(getClass().getResource("/index.html")).toExternalForm());
 
-        // 🚨 關鍵修正：將橋樑實體化並「存入我們宣告的變數」中，再傳給 JS
+        // 注入 JavaBridge
         webEngine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
             if (newState == Worker.State.SUCCEEDED) {
                 JSObject window = (JSObject) webEngine.executeScript("window");
-
-                // 將實體存入全域變數，Java 就不會把它當垃圾丟掉
                 this.javaBridge = new JavaBridge(this);
-                window.setMember("javaApp", this.javaBridge);
+                window.setMember("javaApp", javaBridge);
             }
         });
 
-        // 在 createScene 裡面加入這段，用來接收 JS 的 alert 除錯訊息
-        webEngine.setOnAlert(event -> {
-            System.out.println("[來自網頁的 Debug 訊息]: " + event.getData());
+        // --- 3. 程式碼檢視區 ---
+        codeArea = new TextArea();
+        codeArea.getStyleClass().add("text-area");
+        codeArea.setPromptText("// 點擊節點檢視原始碼...");
+        codeArea.setEditable(false);
+        codeArea.setMinWidth(300);
+
+        // --- 4. SplitPane 分隔面板 ---
+        SplitPane splitPane = new SplitPane(webView, codeArea);
+        splitPane.setDividerPositions(0.7);
+        // 當雙擊分隔線時重置比例
+        Platform.runLater(() -> {
+            splitPane.lookupAll(".split-pane-divider").forEach(div -> {
+                div.setOnMouseClicked(e -> { if (e.getClickCount() == 2) splitPane.setDividerPositions(0.7); });
+            });
         });
 
-        root.setCenter(webView);
-
-        // --- 3. 右側：程式碼檢視區 ---
-        codeArea = new TextArea();
-        codeArea.setPromptText("// 點擊左側節點以檢視原始碼...");
-        codeArea.setPrefWidth(400);
-        codeArea.setEditable(false);
-        root.setRight(codeArea);
+        root.setCenter(splitPane);
 
         Scene scene = new Scene(root, 1200, 800);
-
-        // 載入 CSS
-        String cssUrl = getClass().getResource("/style.css").toExternalForm();
-        scene.getStylesheets().add(cssUrl);
-
+        scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/style.css")).toExternalForm());
         return scene;
     }
 
@@ -118,14 +117,12 @@ public class MainScreen {
         if (dir != null) {
             try (Stream<Path> paths = Files.walk(dir.toPath())) {
                 List<File> files = paths.filter(p -> p.toString().endsWith(".java"))
-                        .map(Path::toFile)
-                        .collect(Collectors.toList());
+                        .map(Path::toFile).collect(Collectors.toList());
                 processAndDisplay(files);
             } catch (Exception e) { e.printStackTrace(); }
         }
     }
 
-    // 實際串接邏輯
     private void processAndDisplay(List<File> files) {
         LanguageAnalyzer analyzer = AnalyzerFactory.getAnalyzer(ProgrammingLanguage.JAVA);
         List<Map<String, Object>> allElements = new ArrayList<>();
@@ -134,28 +131,20 @@ public class MainScreen {
         for (File file : files) {
             try {
                 String code = Files.readString(file.toPath());
-                // 1. 丟給你的 JavaCodeAnalyzer 產生 JSON 字串
                 String jsonStr = analyzer.analyze(code);
-
-                // 2. 轉換為 Cytoscape 格式
                 allElements.addAll(convertToGraphElements(jsonStr, file.getName()));
-
-                // 暫存原始碼
                 fileCache.put(file.getName(), code);
-
             } catch (Exception e) {
                 System.err.println("分析失敗: " + file.getName());
             }
         }
 
-        // 3. 轉換成最終 JSON 並丟給 WebView
         try {
-            String finalElementsJson = mapper.writeValueAsString(allElements);
-            webEngine.executeScript("renderGraph(" + finalElementsJson + ")");
+            String finalJson = mapper.writeValueAsString(allElements);
+            Platform.runLater(() -> webEngine.executeScript("renderGraph(" + finalJson + ")"));
         } catch (Exception e) { e.printStackTrace(); }
     }
 
-    // 將你的 AnalysisResult 結構轉為點線結構
     private List<Map<String, Object>> convertToGraphElements(String jsonStr, String fileName) throws Exception {
         List<Map<String, Object>> elements = new ArrayList<>();
         JsonNode root = mapper.readTree(jsonStr);
@@ -164,20 +153,14 @@ public class MainScreen {
         if (classes != null && classes.isArray()) {
             for (JsonNode cls : classes) {
                 String className = cls.get("className").asText();
-
-                // 建立 Class 節點
                 elements.add(createNode(className, className, "class", fileName));
-
                 JsonNode methods = cls.get("methods");
                 if (methods != null && methods.isArray()) {
                     for (JsonNode m : methods) {
-                        String methodName = m.get("methodName").asText();
-                        String methodId = className + "_" + methodName;
-
-                        // 建立 Method 節點
-                        elements.add(createNode(methodId, methodName, "method", fileName));
-                        // 建立包含關係連線
-                        elements.add(createEdge(className, methodId));
+                        String mName = m.get("methodName").asText();
+                        String mId = className + "_" + mName;
+                        elements.add(createNode(mId, mName, "method", fileName));
+                        elements.add(createEdge(className, mId));
                     }
                 }
             }
@@ -186,33 +169,23 @@ public class MainScreen {
     }
 
     private Map<String, Object> createNode(String id, String label, String type, String fileName) {
-        Map<String, Object> node = new HashMap<>();
-        Map<String, Object> data = new HashMap<>();
-        data.put("id", id);
-        data.put("label", label);
-        data.put("type", type);
-        data.put("fileName", fileName); // 存入檔名，方便點擊時找程式碼
-        node.put("data", data);
-        return node;
+        Map<String, Object> n = new HashMap<>();
+        Map<String, Object> d = new HashMap<>();
+        d.put("id", id); d.put("label", label); d.put("type", type); d.put("fileName", fileName);
+        n.put("data", d);
+        return n;
     }
 
-    private Map<String, Object> createEdge(String source, String target) {
-        Map<String, Object> edge = new HashMap<>();
-        Map<String, Object> data = new HashMap<>();
-        data.put("source", source);
-        data.put("target", target);
-        edge.put("data", data);
-        return edge;
+    private Map<String, Object> createEdge(String s, String t) {
+        Map<String, Object> e = new HashMap<>();
+        Map<String, Object> d = new HashMap<>();
+        d.put("source", s); d.put("target", t);
+        e.put("data", d);
+        return e;
     }
 
-    // 供 JavaScript 呼叫的方法：顯示程式碼
-    public void showCodeInArea(String fileName) {
-        String code = fileCache.get(fileName);
-        if (code != null) {
-            codeArea.setText(code);
-        } else {
-            // 如果找不到檔案，顯示錯誤訊息，避免畫面一片空白
-            codeArea.setText("// 找不到對應的原始碼: " + fileName);
-        }
+    public void updateCodeArea(String fileName) {
+        String code = fileCache.getOrDefault(fileName, "// 找不到原始碼: " + fileName);
+        Platform.runLater(() -> codeArea.setText(code));
     }
 }
