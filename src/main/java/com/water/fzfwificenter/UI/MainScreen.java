@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.water.fzfwificenter.analyzer.AnalyzerFactory;
 import com.water.fzfwificenter.analyzer.LanguageAnalyzer;
 import com.water.fzfwificenter.analyzer.ProgrammingLanguage;
+import com.water.fzfwificenter.llm.LLMService;
 import javafx.application.Platform;
 import javafx.concurrent.Worker;
 import javafx.geometry.Pos;
@@ -33,9 +34,11 @@ public class MainScreen {
     private TextArea codeArea;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Map<String, String> fileCache = new HashMap<>();
+    private final Map<String, String> jsonCache = new HashMap<>();
 
     // 🚨 重要：保持強引用，防止橋樑被 GC 掉
     private JavaBridge javaBridge;
+    private final LLMService llmService = new LLMService();
 
     public MainScreen(Stage stage) {
         this.stage = stage;
@@ -134,6 +137,7 @@ public class MainScreen {
                 String jsonStr = analyzer.analyze(code);
                 allElements.addAll(convertToGraphElements(jsonStr, file.getName()));
                 fileCache.put(file.getName(), code);
+                jsonCache.put(file.getName(), jsonStr);
             } catch (Exception e) {
                 System.err.println("分析失敗: " + file.getName());
             }
@@ -184,8 +188,67 @@ public class MainScreen {
         return e;
     }
 
+    // 升級版：包含呼叫 LLM 與更新畫面的邏輯
     public void updateCodeArea(String fileName) {
-        String code = fileCache.getOrDefault(fileName, "// 找不到原始碼: " + fileName);
-        Platform.runLater(() -> codeArea.setText(code));
+        String code = fileCache.get(fileName);
+        String astJson = jsonCache.get(fileName);
+        if (code != null) {
+            // 1. 立即在畫面上顯示「載入中」的提示與原始碼
+            Platform.runLater(() -> {
+                codeArea.setText("⏳ 正在請 AI 分析 " + fileName + " 的結構，請稍候...\n" +
+                        "========================================\n\n" +
+                        code);
+            });
+
+            // 2. 在背景非同步呼叫 LLM (不會卡住畫面)
+            llmService.analyzeCodeAsync(code, astJson).thenAccept(llmJsonResult -> {
+                // 3. LLM 處理完畢後，切換回 UI 執行緒更新結果
+                Platform.runLater(() -> {
+                    try {
+                        // 將 LLM 吐出的 JSON 轉成漂亮的純文字排版
+                        String formattedAnalysis = formatLlmResult(llmJsonResult);
+
+                        // 將 AI 分析結果放在最上方，底下保留原始碼
+                        codeArea.setText("🤖 【AI 智慧分析結果】\n\n" +
+                                formattedAnalysis + "\n" +
+                                "========================================\n\n" +
+                                code);
+                    } catch (Exception e) {
+                        codeArea.setText("❌ AI 分析解析失敗\n\n" + code);
+                    }
+                });
+            });
+
+        } else {
+            Platform.runLater(() -> codeArea.setText("// 找不到對應的原始碼: " + fileName));
+        }
+    }
+
+    // 新增：用來解析 LLM 回傳的 JSON 並美化輸出的輔助方法
+    private String formatLlmResult(String jsonStr) {
+        try {
+            JsonNode root = mapper.readTree(jsonStr);
+
+            // 如果 LLMService 發生連線錯誤，會回傳帶有 error 的 JSON
+            if (root.has("error")) {
+                return root.get("error").asText();
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("📂 類別名稱: ").append(root.path("className").asText("未知")).append("\n");
+            sb.append("📝 類別職責: ").append(root.path("classDescription").asText("無說明")).append("\n\n");
+            sb.append("⚙️ 方法清單:\n");
+
+            JsonNode methods = root.path("methods");
+            if (methods.isArray()) {
+                for (JsonNode m : methods) {
+                    sb.append("  - ").append(m.path("methodName").asText("未知")).append("()\n");
+                    sb.append("    說明: ").append(m.path("description").asText("無說明")).append("\n\n");
+                }
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "無法解析 AI 回傳的資料 (可能模型沒有回傳標準的 JSON):\n" + jsonStr;
+        }
     }
 }
