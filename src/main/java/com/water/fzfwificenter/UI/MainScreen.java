@@ -21,6 +21,7 @@ import javafx.stage.Stage;
 import netscape.javascript.JSObject;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -30,13 +31,15 @@ import java.util.stream.Stream;
 public class MainScreen {
 
     private final Stage stage;
-    private WebEngine webEngine;
-    private TextArea codeArea;
-    private final ObjectMapper mapper = new ObjectMapper();
-    private final Map<String, String> fileCache = new HashMap<>();
-    private final Map<String, String> jsonCache = new HashMap<>();
+    private WebEngine webEngine;      // 左側 Cytoscape 引擎
+    private WebEngine monacoEngine;   // 右側 Monaco 編輯器引擎
+    private TextArea aiArea;          // 右上方 AI 分析顯示區
 
-    // 🚨 重要：保持強引用，防止橋樑被 GC 掉
+    private final ObjectMapper mapper = new ObjectMapper();
+    private final Map<String, String> fileCache = new HashMap<>(); // 存原始碼
+    private final Map<String, String> jsonCache = new HashMap<>(); // 存 AST 結構
+
+    // 🚨 終極防護：保持強引用，防止橋樑被 GC 垃圾回收
     private JavaBridge javaBridge;
     private final LLMService llmService = new LLMService();
 
@@ -68,41 +71,62 @@ public class MainScreen {
         topBar.getStyleClass().add("top-bar");
         root.setTop(topBar);
 
-        // --- 2. WebView (圖表區) ---
+        // --- 2. 左側：WebView (Cytoscape 圖表區) ---
         WebView webView = new WebView();
         webView.setMinWidth(400);
         webEngine = webView.getEngine();
         webEngine.load(Objects.requireNonNull(getClass().getResource("/index.html")).toExternalForm());
 
-        // 注入 JavaBridge
+        // 注入 JavaBridge 並建立連結
         webEngine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
             if (newState == Worker.State.SUCCEEDED) {
                 JSObject window = (JSObject) webEngine.executeScript("window");
-                this.javaBridge = new JavaBridge(this);
+                this.javaBridge = new JavaBridge(this); // 存入變數防止 GC
                 window.setMember("javaApp", javaBridge);
             }
         });
 
-        // --- 3. 程式碼檢視區 ---
-        codeArea = new TextArea();
-        codeArea.getStyleClass().add("text-area");
-        codeArea.setPromptText("// 點擊節點檢視原始碼...");
-        codeArea.setEditable(false);
-        codeArea.setMinWidth(300);
+        // --- 3. 右側：AI 分析區 (上) + Monaco 編輯器 (下) ---
 
-        // --- 4. SplitPane 分隔面板 ---
-        SplitPane splitPane = new SplitPane(webView, codeArea);
-        splitPane.setDividerPositions(0.7);
-        // 當雙擊分隔線時重置比例
-        Platform.runLater(() -> {
-            splitPane.lookupAll(".split-pane-divider").forEach(div -> {
-                div.setOnMouseClicked(e -> { if (e.getClickCount() == 2) splitPane.setDividerPositions(0.7); });
-            });
+        // AI 顯示區
+        aiArea = new TextArea();
+        aiArea.setEditable(false);
+        aiArea.setWrapText(true);
+        aiArea.setPromptText("🤖 等待 AI 分析...");
+        aiArea.setPrefHeight(220); // 調整高度
+        aiArea.setStyle("-fx-control-inner-background: #1e252b; -fx-text-fill: #61afef; " +
+                "-fx-font-family: 'Consolas'; -fx-font-size: 14px; -fx-padding: 10;");
+
+        // Monaco 編輯器 WebView
+        WebView monacoView = new WebView();
+        monacoEngine = monacoView.getEngine();
+
+        // 🚨 關鍵：加入除錯監聽
+        monacoEngine.setOnAlert(event -> {
+            System.out.println("[右側編輯器 Debug]: " + event.getData());
         });
+
+        // 載入 HTML
+        try {
+            String url = Objects.requireNonNull(getClass().getResource("/editor.html")).toExternalForm();
+            monacoEngine.load(url);
+        } catch (Exception e) {
+            System.err.println("🚨 找不到 editor.html！請確認檔案放在 src/main/resources 之下");
+        }
+
+        // 使用 BorderPane 組合右側面板
+        BorderPane rightPane = new BorderPane();
+        rightPane.setTop(aiArea);
+        rightPane.setCenter(monacoView);
+
+        // --- 4. SplitPane 分隔中央視窗 ---
+        SplitPane splitPane = new SplitPane(webView, rightPane);
+        splitPane.setDividerPositions(0.65); // 初始比例
 
         root.setCenter(splitPane);
 
-        Scene scene = new Scene(root, 1200, 800);
+        Scene scene = new Scene(root, 1280, 850);
+        // 載入 CSS 樣式
         scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/style.css")).toExternalForm());
         return scene;
     }
@@ -130,12 +154,17 @@ public class MainScreen {
         LanguageAnalyzer analyzer = AnalyzerFactory.getAnalyzer(ProgrammingLanguage.JAVA);
         List<Map<String, Object>> allElements = new ArrayList<>();
         fileCache.clear();
+        jsonCache.clear();
 
         for (File file : files) {
             try {
                 String code = Files.readString(file.toPath());
-                String jsonStr = analyzer.analyze(code);
+                String jsonStr = analyzer.analyze(code); // 執行靜態分析
+
+                // 轉換為 Cytoscape 格式
                 allElements.addAll(convertToGraphElements(jsonStr, file.getName()));
+
+                // 存入快取
                 fileCache.put(file.getName(), code);
                 jsonCache.put(file.getName(), jsonStr);
             } catch (Exception e) {
@@ -145,8 +174,45 @@ public class MainScreen {
 
         try {
             String finalJson = mapper.writeValueAsString(allElements);
+            // 確保 UI 更新在 JavaFX 執行緒
             Platform.runLater(() -> webEngine.executeScript("renderGraph(" + finalJson + ")"));
         } catch (Exception e) { e.printStackTrace(); }
+    }
+
+    // 核心更新邏輯：處理 Monaco 載入與 LLM 分析
+    public void updateCodeArea(String fileName) {
+        String code = fileCache.get(fileName);
+        String astJson = jsonCache.get(fileName);
+
+        if (code != null) {
+            Platform.runLater(() -> {
+                // 1. 更新 AI 區狀態
+                aiArea.setText("⏳ 正在結合靜態分析與原始碼進行 AI 解析 [" + fileName + "]...");
+
+                // 2. 將程式碼安全地送到 Monaco (使用 Base64 防止字元衝突)
+                try {
+                    String base64Code = Base64.getEncoder().encodeToString(code.getBytes(StandardCharsets.UTF_8));
+                    monacoEngine.executeScript("setCodeFromBase64('" + base64Code + "')");
+                } catch (Exception e) {
+                    System.err.println("Monaco 渲染失敗");
+                }
+            });
+
+            // 3. 非同步呼叫 LLM (同時餵入代碼與結構)
+            llmService.analyzeCodeAsync(code, astJson).thenAccept(llmJsonResult -> {
+                Platform.runLater(() -> {
+                    try {
+                        String formattedAnalysis = formatLlmResult(llmJsonResult);
+                        aiArea.setText("🤖 【AI 智慧分析結果】\n\n" + formattedAnalysis);
+                    } catch (Exception e) {
+                        aiArea.setText("❌ AI 回傳資料解析失敗\n回傳內容：" + llmJsonResult);
+                    }
+                });
+            });
+
+        } else {
+            Platform.runLater(() -> aiArea.setText("❌ 找不到原始碼: " + fileName));
+        }
     }
 
     private List<Map<String, Object>> convertToGraphElements(String jsonStr, String fileName) throws Exception {
@@ -188,67 +254,26 @@ public class MainScreen {
         return e;
     }
 
-    // 升級版：包含呼叫 LLM 與更新畫面的邏輯
-    public void updateCodeArea(String fileName) {
-        String code = fileCache.get(fileName);
-        String astJson = jsonCache.get(fileName);
-        if (code != null) {
-            // 1. 立即在畫面上顯示「載入中」的提示與原始碼
-            Platform.runLater(() -> {
-                codeArea.setText("⏳ 正在請 AI 分析 " + fileName + " 的結構，請稍候...\n" +
-                        "========================================\n\n" +
-                        code);
-            });
-
-            // 2. 在背景非同步呼叫 LLM (不會卡住畫面)
-            llmService.analyzeCodeAsync(code, astJson).thenAccept(llmJsonResult -> {
-                // 3. LLM 處理完畢後，切換回 UI 執行緒更新結果
-                Platform.runLater(() -> {
-                    try {
-                        // 將 LLM 吐出的 JSON 轉成漂亮的純文字排版
-                        String formattedAnalysis = formatLlmResult(llmJsonResult);
-
-                        // 將 AI 分析結果放在最上方，底下保留原始碼
-                        codeArea.setText("🤖 【AI 智慧分析結果】\n\n" +
-                                formattedAnalysis + "\n" +
-                                "========================================\n\n" +
-                                code);
-                    } catch (Exception e) {
-                        codeArea.setText("❌ AI 分析解析失敗\n\n" + code);
-                    }
-                });
-            });
-
-        } else {
-            Platform.runLater(() -> codeArea.setText("// 找不到對應的原始碼: " + fileName));
-        }
-    }
-
-    // 新增：用來解析 LLM 回傳的 JSON 並美化輸出的輔助方法
     private String formatLlmResult(String jsonStr) {
         try {
             JsonNode root = mapper.readTree(jsonStr);
-
-            // 如果 LLMService 發生連線錯誤，會回傳帶有 error 的 JSON
-            if (root.has("error")) {
-                return root.get("error").asText();
-            }
+            if (root.has("error")) return root.get("error").asText();
 
             StringBuilder sb = new StringBuilder();
             sb.append("📂 類別名稱: ").append(root.path("className").asText("未知")).append("\n");
             sb.append("📝 類別職責: ").append(root.path("classDescription").asText("無說明")).append("\n\n");
-            sb.append("⚙️ 方法清單:\n");
+            sb.append("⚙️ 方法詳細說明:\n");
 
             JsonNode methods = root.path("methods");
             if (methods.isArray()) {
                 for (JsonNode m : methods) {
-                    sb.append("  - ").append(m.path("methodName").asText("未知")).append("()\n");
-                    sb.append("    說明: ").append(m.path("description").asText("無說明")).append("\n\n");
+                    sb.append("  • ").append(m.path("methodName").asText("未知")).append("()\n");
+                    sb.append("    ➔ ").append(m.path("description").asText("無說明")).append("\n\n");
                 }
             }
             return sb.toString();
         } catch (Exception e) {
-            return "無法解析 AI 回傳的資料 (可能模型沒有回傳標準的 JSON):\n" + jsonStr;
+            return "無法解析 AI 回傳的 JSON (可能是模型輸出格式不完全):\n" + jsonStr;
         }
     }
 }
