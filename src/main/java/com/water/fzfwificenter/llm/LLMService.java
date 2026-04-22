@@ -27,16 +27,27 @@ public class LLMService {
     public CompletableFuture<String> analyzeCodeAsync(String javaCode, String astJson) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                // 🚨 修改 2：升級 Prompt，明確告知有結構圖和原始碼
-                String systemPrompt = "你是一個資深的 Java 軟體架構師。我將提供給你一份 Java 檔案的「靜態分析結構圖 (JSON)」以及它的「完整原始碼」。\n" +
-                        "請結合兩者的資訊，嚴格以 JSON 格式回傳類別與方法的繁體中文功能說明。絕對不要輸出任何解釋性文字或 Markdown 標記 (如 ```json)。\n" +
-                        "回傳格式範例：\n" +
-                        "{ \"className\": \"名稱\", \"classDescription\": \"類別綜合說明...\", \"methods\": [ { \"methodName\": \"方法名\", \"description\": \"方法說明...\" } ] }\n\n";
+                // 🚨 終極鎮壓版 Prompt：使用 XML 標籤隔離資料，並禁止翻譯 JSON 鍵值
+                String systemPrompt = "你是一個專門分析 Java 程式碼並回傳固定格式 JSON 的 API 伺服器。\n" +
+                        "請閱讀下方 <AST> 與 <CODE> 標籤內的資料，並分析其結構與邏輯。\n\n" +
+                        "【嚴格規定】\n" +
+                        "1. 只能回傳 JSON，絕對不能包含任何 Markdown (如 ```json) 或其他說明文字。\n" +
+                        "2. JSON 的 Key 名稱【絕對禁止更改或翻譯】，必須維持英文。\n" +
+                        "3. JSON 的 Value (內容) 必須使用【繁體中文】詳細解說。\n\n" +
+                        "【強制輸出的 JSON 格式】\n" +
+                        "{\n" +
+                        "  \"className\": \"此檔案的類別名稱\",\n" +
+                        "  \"classDescription\": \"(以繁體中文說明該類別的主要職責)\",\n" +
+                        "  \"methods\": [\n" +
+                        "    { \"methodName\": \"方法名稱\", \"description\": \"(以繁體中文說明該方法的邏輯與功能)\" }\n" +
+                        "  ]\n" +
+                        "}\n\n";
 
-                // 將結構圖和程式碼組合在一起
+                // 將資料用 XML 標籤包起來，防止 AI 把「輸入的 JSON」跟「輸出的 JSON」搞混
                 String fullPrompt = systemPrompt +
-                        "【靜態分析結構圖】\n" + astJson + "\n\n" +
-                        "【完整原始碼】\n" + javaCode;
+                        "<AST>\n" + astJson + "\n</AST>\n\n" +
+                        "<CODE>\n" + javaCode + "\n</CODE>\n\n" +
+                        "請直接輸出純 JSON 格式：";
 
                 // 處理字串跳脫，準備 JSON Payload
                 String safePrompt = fullPrompt.replace("\\", "\\\\")

@@ -256,24 +256,72 @@ public class MainScreen {
 
     private String formatLlmResult(String jsonStr) {
         try {
-            JsonNode root = mapper.readTree(jsonStr);
+            // 1. 清理可能的 Markdown 標籤與雜訊
+            String cleanJson = jsonStr.replaceAll("^```json\\s*", "").replaceAll("```$", "").trim();
+            JsonNode root = mapper.readTree(cleanJson);
+
+            // 處理錯誤訊息
             if (root.has("error")) return root.get("error").asText();
 
+            // 2. 🚨 深度挖掘目標節點 (處理包在 response 或 classes 陣列的情況)
+            JsonNode targetNode = root;
+            if (root.has("response") && root.get("response").isObject()) {
+                targetNode = root.get("response");
+            } else if (root.has("classes") && root.get("classes").isArray() && root.get("classes").size() > 0) {
+                targetNode = root.get("classes").get(0);
+            } else if (root.has("分析結果") && root.get("分析結果").isObject()) {
+                targetNode = root.get("分析結果");
+            }
+
+            // 3. 🚨 模糊欄位提取 (解決 AI 自作聰明翻譯 Key 的問題)
+            String cName = getField(targetNode, "className", "類別名稱", "name");
+            String cDesc = getField(targetNode, "classDescription", "類別職責", "description", "說明");
+
+            // 4. 🚨 最終防呆：如果還是沒抓到核心資訊，顯示原始 response 內容
+            if (cName.equals("未知") && root.has("response")) {
+                return "🤖 AI 智慧分析報告：\n\n" + root.get("response").asText();
+            }
+
+            if (cName.equals("未知") && root.has("分析結果")) {
+                return "🤖 AI 智慧分析報告：\n\n" + root.get("分析結果").asText();
+            }
+
+            // 5. 正式排版輸出
             StringBuilder sb = new StringBuilder();
-            sb.append("📂 類別名稱: ").append(root.path("className").asText("未知")).append("\n");
-            sb.append("📝 類別職責: ").append(root.path("classDescription").asText("無說明")).append("\n\n");
+            sb.append("📂 類別名稱: ").append(cName).append("\n");
+            sb.append("📝 類別職責: ").append(cDesc).append("\n\n");
             sb.append("⚙️ 方法詳細說明:\n");
 
-            JsonNode methods = root.path("methods");
-            if (methods.isArray()) {
+            // 處理方法列表的模糊匹配
+            JsonNode methods = targetNode.has("methods") ? targetNode.get("methods") : targetNode.get("方法清單");
+            if (methods == null && targetNode.has("methods")) methods = targetNode.get("methods");
+
+            if (methods != null && methods.isArray()) {
                 for (JsonNode m : methods) {
-                    sb.append("  • ").append(m.path("methodName").asText("未知")).append("()\n");
-                    sb.append("    ➔ ").append(m.path("description").asText("無說明")).append("\n\n");
+                    String mName = getField(m, "methodName", "方法名稱", "name");
+                    String mDesc = getField(m, "description", "功能描述", "說明", "解釋");
+                    sb.append("  • ").append(mName).append("()\n");
+                    sb.append("    ➔ ").append(mDesc).append("\n\n");
                 }
+            } else if (targetNode.has("response")) {
+                // 如果沒有方法數組但有長文本，把文本補在後面
+                sb.append(targetNode.get("response").asText());
             }
+
             return sb.toString();
+
         } catch (Exception e) {
-            return "無法解析 AI 回傳的 JSON (可能是模型輸出格式不完全):\n" + jsonStr;
+            return "❌ 無法解析 AI 回傳的資料 (格式嚴重跑掉):\n" + e.getMessage() + "\n\n【AI 原始輸出】:\n" + jsonStr;
         }
+    }
+
+    // 🚨 新增：模糊欄位獲取小工具
+    private String getField(JsonNode node, String... keys) {
+        for (String key : keys) {
+            if (node.has(key) && !node.get(key).isNull()) {
+                return node.get(key).asText();
+            }
+        }
+        return "未知";
     }
 }
