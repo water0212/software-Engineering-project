@@ -206,11 +206,17 @@ public class MainScreen {
         JsonNode root = mapper.readTree(jsonStr);
         JsonNode classes = root.path("classes");
 
+        // 🚨 1. 建立「檔案」層級的節點 (最外層框框)
+        // ID 使用 "file_" + fileName 確保唯一性
+        String fileNodeId = "file_" + fileName;
+        elements.add(createNode(fileNodeId, fileName, "file", fileName, null, "none"));
+
         if (classes.isArray()) {
             for (JsonNode cls : classes) {
                 String className = cls.path("className").asText();
-                // 1. 建立 Class 節點 (沒有 Parent)
-                elements.add(createNode(className, className, "class", fileName, null, "none"));
+
+                // 🚨 2. 建立「類別」節點 (中間層)，其 parent 指向檔案節點
+                elements.add(createNode(className, className, "class", fileName, fileNodeId, "none"));
 
                 JsonNode methods = cls.path("methods");
                 if (methods.isArray()) {
@@ -218,19 +224,13 @@ public class MainScreen {
                         String mName = m.path("methodName").asText();
                         String mId = className + "_" + mName;
 
-                        // 2. 判斷資料流向 (基礎關鍵字判定)
                         String flow = "none";
                         String mNameLower = mName.toLowerCase();
-                        if (mNameLower.startsWith("get") || mNameLower.contains("load") || mNameLower.contains("read")) {
-                            flow = "input";
-                        } else if (mNameLower.startsWith("set") || mNameLower.contains("save") || mNameLower.contains("write") || mNameLower.contains("render")) {
-                            flow = "output";
-                        }
+                        if (mNameLower.startsWith("get") || mNameLower.contains("load")) flow = "input";
+                        else if (mNameLower.startsWith("set") || mNameLower.contains("render")) flow = "output";
 
-                        // 3. 建立 Method 節點，並設定其 parent 為 className
+                        // 🚨 3. 建立「方法」節點 (最內層)，其 parent 指向類別節點
                         elements.add(createNode(mId, mName, "method", fileName, className, flow));
-
-                        // 注意：因為已經被包在 Class 複合節點內了，就不再需要 Edge，畫面會更乾淨！
                     }
                 }
             }
