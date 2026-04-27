@@ -49,7 +49,7 @@
 
     function renderGraph(graphData) {
         if(cy) {
-            cy.destroy();
+            cy.destroy(); // 清除舊圖表確保乾淨
         }
 
         cy = cytoscape({
@@ -57,109 +57,121 @@
             elements: graphData,
             textureOnViewport: false,
             pixelRatio: 1.0,
+            hideEdgesOnViewport: false,
+            minZoom: 0.2,
+            maxZoom: 1.5,
+
             style: [
-                // 1. 檔案層級 (最外層)
-                {
-                    selector: 'node[type="file"]',
-                    style: {
-                        'background-color': '#ffffff',
-                        'background-opacity': 0.05,
-                        'border-width': 1,
-                        'border-color': '#666',
-                        'border-style': 'dashed',
-                        'label': 'data(label)',
-                        'color': '#888',
-                        'text-valign': 'top',
-                        'font-size': '16px',
-                        'padding': '40px',
-                        'shape': 'rectangle'
-                    }
-                },
-                // 2. 類別層級 (中間層)
+                // 1. 類別節點 (父節點容器) 的樣式優化
                 {
                     selector: 'node[type="class"]',
                     style: {
-                        'display': 'none', // 初始隱藏
                         'background-color': '#007acc',
-                        'background-opacity': 0.1,
-                        'border-width': 2,
+                        'background-opacity': 0.15, // 🚨 讓實心色塊變成 15% 半透明的玻璃感
+                        'border-width': 2,          // 加上科技感邊框
                         'border-color': '#007acc',
                         'label': 'data(label)',
                         'color': '#fff',
                         'text-valign': 'top',
-                        'font-size': '14px',
+                        'text-margin-y': -8,        // 將標題稍微往上推，不擠壓內容
+                        'font-size': '16px',
                         'font-weight': 'bold',
-                        'padding': '25px',
+                        'padding': '20px',          // 增加內邊距，讓容器有呼吸空間
                         'shape': 'round-rectangle'
                     }
                 },
-                // 3. 方法層級 (最內層)
+                // 2. 方法節點 (子節點) 的樣式優化
                 {
                     selector: 'node[type="method"]',
                     style: {
-                        'display': 'none', // 初始隱藏
-                        'background-color': '#3a4a5a',
+                        'display': 'none',
+                        'background-color': '#444',
                         'label': 'data(label)',
                         'color': '#eee',
                         'text-valign': 'center',
-                        'font-size': '11px',
+                        'font-size': '12px',
+                        // 🚨 核心關鍵：取消固定寬高，改為 'label' 讓節點自動貼合文字長度
                         'width': 'label',
                         'height': 'label',
-                        'padding': '8px',
-                        'shape': 'round-rectangle'
+                        'padding': '10px',          // 讓文字不會緊貼邊界
+                        'shape': 'round-rectangle' // 將圓形改為圓角矩形，更適合放文字
                     }
                 },
-                { selector: 'node[flow="input"]', style: { 'background-color': '#28a745' } },
-                { selector: 'node[flow="output"]', style: { 'background-color': '#dc3545' } }
+                // 3. 資料流顏色標記：輸入 (綠色)
+                {
+                    selector: 'node[flow="input"]',
+                    style: {
+                        'background-color': '#28a745',
+                        'border-width': 2,
+                        'border-color': '#fff'
+                    }
+                },
+                // 4. 資料流顏色標記：輸出 (紅色)
+                {
+                    selector: 'node[flow="output"]',
+                    style: {
+                        'background-color': '#dc3545',
+                        'border-width': 2,
+                        'border-color': '#fff'
+                    }
+                },
+                // 邊緣樣式 (如果有跨類別的連線)
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 2,
+                        'line-color': '#666',
+                        'target-arrow-shape': 'triangle',
+                        'target-arrow-color': '#666',
+                        'curve-style': 'bezier'
+                    }
+                }
             ],
-            // 🚨 初始先不要執行 layout，或是用最簡單的預設
-            layout: { name: 'null' }
+            layout: layoutConfig
         });
 
-        // 🚨 關鍵修復：給 WebView 一點時間準備標籤資訊，防止 labelWidth 報錯
-        setTimeout(() => {
-            try {
-                cy.layout({
-                    name: 'fcose',
-                    quality: 'default',
-                    randomize: true, // 初始分開節點
-                    animate: true,
-                    animationDuration: 600,
-                    nodeDimensionsIncludeLabels: true, // 現在可以安全使用了
-                    padding: 30,
-                    packComponents: true
-                }).run();
-                showDebug("排版引擎載入完成");
-            } catch(e) {
-                showDebug("排版失敗，切換後援方案", true);
-                cy.layout({ name: 'cose' }).run(); // 如果 fcose 真的不行，自動切換到內建的 cose
-            }
-        }, 50);
-
-        // --- 點擊事件：處理三層展開 ---
+        // 🚨 節點點擊事件：處理「展開/收合」與呼叫 Java
         cy.on('tap', 'node', function(evt){
             var node = evt.target;
-            var children = node.children();
+            const file = node.data('fileName');
+            const type = node.data('type');
 
-            if (children.length > 0) {
-                var isHidden = children[0].style('display') === 'none';
-                children.style('display', isHidden ? 'element' : 'none');
+            showDebug("點擊節點: " + node.id() + " | 檔案: " + file);
 
-                // 如果是收合，連孫子一起收
-                if (!isHidden) {
-                    node.descendants().style('display', 'none');
+            // 如果點擊的是 Class，就觸發展開/收合動畫
+            if (type === 'class') {
+                var children = node.children();
+                if (children.length > 0) {
+                    var isHidden = children[0].style('display') === 'none';
+                    // 切換顯示狀態
+                    children.style('display', isHidden ? 'element' : 'none');
+                    // 重新執行排版動畫
+                    cy.layout(layoutConfig).run();
                 }
-
-                // 點擊後重新排版，讓容器自動縮放
-                cy.layout({
-                    name: 'fcose',
-                    animate: true,
-                    nodeDimensionsIncludeLabels: true,
-                    fit: true
-                }).run();
             }
 
-            if (window.javaApp) window.javaApp.showCode(node.data('fileName'));
+            // 呼叫 Java 端讀取程式碼給 AI
+            if (window.javaApp) window.javaApp.showCode(file);
+        });
+
+        // 滑鼠懸浮 Tooltip
+        cy.on('mouseover', 'node', function(evt){
+            var node = evt.target;
+            var tooltip = document.getElementById('tooltip');
+            tooltip.innerHTML = "類型: " + node.data('type') + "<br>名稱: " + node.data('label');
+            tooltip.style.display = 'block';
+        });
+
+        cy.on('mouseout', 'node', function(evt){
+            document.getElementById('tooltip').style.display = 'none';
+        });
+
+        cy.on('zoom', function(){
+            const now = Date.now();
+            if (now - lastZoomLog > 100) {
+                if (window.javaApp) window.javaApp.logZoom(cy.zoom());
+                lastZoomLog = now;
+            }
         });
     }
 </script>
