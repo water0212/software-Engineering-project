@@ -8,6 +8,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public class LLMService {
@@ -78,5 +79,28 @@ public class LLMService {
                 return "{\"error\": \"LLM 分析失敗：" + e.getMessage() + "\"}";
             }
         });
+    }
+
+    // 在 LLMService.java 中新增匯總分析方法
+    public CompletableFuture<String> analyzeLargeFileAsync(String code, String astJson) {
+        // 1. 先切割程式碼
+        List<String> chunks = CodeChunker.splitByMethods(code, astJson);
+
+        if (chunks.size() <= 1) {
+            return analyzeCodeAsync(code, astJson);
+        }
+
+        // 2. 對每個 Chunk 進行平行分析
+        List<CompletableFuture<String>> futures = chunks.stream()
+                .map(chunk -> analyzeCodeAsync(chunk, "Partial AST Context"))
+                .collect(java.util.stream.Collectors.toList());
+
+        // 3. 匯總所有結果
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                .thenApply(v -> {
+                    return futures.stream()
+                            .map(CompletableFuture::join)
+                            .collect(java.util.stream.Collectors.joining("\n---\n"));
+                });
     }
 }
