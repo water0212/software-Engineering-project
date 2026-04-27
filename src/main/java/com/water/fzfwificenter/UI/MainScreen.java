@@ -2,6 +2,8 @@ package com.water.fzfwificenter.UI;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.water.fzfwificenter.analyzer.AnalyzerFactory;
 import com.water.fzfwificenter.analyzer.LanguageAnalyzer;
 import com.water.fzfwificenter.analyzer.ProgrammingLanguage;
@@ -25,13 +27,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Comparator;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class MainScreen {
-    private static final Path RESOURCE_DIRECTORY = Path.of("src");
-    private static final Path SOURCE_DIRECTORY = Path.of("src");
+    private static final Path OUTPUT_DIRECTORY = Path.of("src", "files");
 
     private final Stage stage;
     private WebEngine webEngine;
@@ -44,11 +46,6 @@ public class MainScreen {
 
     private JavaBridge javaBridge;
     private final LLMService llmService = new LLMService();
-
-    private enum SaveMode {
-        FILE,
-        DIRECTORY
-    }
 
     public MainScreen(Stage stage) {
         this.stage = stage;
@@ -130,7 +127,7 @@ public class MainScreen {
         FileChooser chooser = new FileChooser();
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Java Files", "*.java"));
         List<File> files = chooser.showOpenMultipleDialog(stage);
-        if (files != null) processAndDisplay(files, SaveMode.FILE, null);
+        if (files != null) processAndDisplay(files);
     }
 
     private void handleImportDirectory() {
@@ -140,22 +137,23 @@ public class MainScreen {
             try (Stream<Path> paths = Files.walk(dir.toPath())) {
                 List<File> files = paths.filter(p -> p.toString().endsWith(".java"))
                         .map(Path::toFile).collect(Collectors.toList());
-                processAndDisplay(files, SaveMode.DIRECTORY, dir.toPath());
+                processAndDisplay(files);
             } catch (Exception e) { e.printStackTrace(); }
         }
     }
 
-    private void processAndDisplay(List<File> files, SaveMode saveMode, Path sourceDirectory) {
+    private void processAndDisplay(List<File> files) {
         LanguageAnalyzer analyzer = AnalyzerFactory.getAnalyzer(ProgrammingLanguage.JAVA);
         List<Map<String, Object>> allElements = new ArrayList<>();
         fileCache.clear();
         jsonCache.clear();
+        prepareOutputDirectory();
 
         for (File file : files) {
             try {
                 String code = Files.readString(file.toPath());
                 String jsonStr = analyzer.analyze(code);
-                saveAnalysisJson(file, jsonStr, saveMode, sourceDirectory);
+                saveAnalysisJson(file, jsonStr);
                 allElements.addAll(convertToGraphElements(jsonStr, file.getName()));
                 fileCache.put(file.getName(), code);
                 jsonCache.put(file.getName(), jsonStr);
@@ -170,61 +168,67 @@ public class MainScreen {
         } catch (Exception e) { e.printStackTrace(); }
     }
 
-    // 🚨 替換原本的 updateCodeArea 方法
-    public void updateCodeArea(String payload) {
-        // 1. 解析 Payload (格式: fileName|||type|||label)
+
+    public void handleNodeSelectionWithAnalyzeStatus(String payload) {
         String[] parts = payload.split("\\|\\|\\|");
         String fileName = parts[0];
         String nodeType = parts.length > 1 ? parts[1] : "file";
         String nodeName = parts.length > 2 ? parts[2] : fileName;
 
         String code = fileCache.get(fileName);
-        String astJson = jsonCache.get(fileName);
+        String fallbackJson = jsonCache.get(fileName);
 
-        if (code != null) {
-            Platform.runLater(() -> {
-                // 根據點擊的類型，顯示更精準的 UI 提示
-                String displayType = nodeType.equals("method") ? "方法" : (nodeType.equals("class") ? "類別" : "檔案");
-                aiArea.setText("⏳ 正在針對 " + displayType + " [" + nodeName + "] 進行 AI 解析...");
-                try {
-                    String base64Code = Base64.getEncoder().encodeToString(code.getBytes(StandardCharsets.UTF_8));
-                    monacoEngine.executeScript("setCodeFromBase64('" + base64Code + "')");
-                } catch (Exception e) {
-                    System.err.println("Monaco 渲染失敗");
-                }
-            });
+        if (code == null) {
+            Platform.runLater(() -> aiArea.setText(buildFileAnalysisFailedMessage(fileName)));
+            return;
+        }
 
-            // 2. 核心魔法：在 AST JSON 中注入「AI 專注目標」
+        Platform.runLater(() -> {
+            String displayType = nodeType.equals("method") ? "方法" : (nodeType.equals("class") ? "類別" : "檔案");
+            aiArea.setText("正在針對 " + displayType + " [" + nodeName + "] 進行 AI 分析...");
             try {
-                JsonNode rootNode = mapper.readTree(astJson);
-                if (rootNode.isObject()) {
-                    String promptHint = "使用者目前點擊了 " + nodeType + "：「" + nodeName + "」。請務必將分析焦點【完全集中】在這個特定元素上，不要分析其他無關的方法。";
-                    ((com.fasterxml.jackson.databind.node.ObjectNode) rootNode).put("USER_FOCUS_TARGET", promptHint);
-                    astJson = mapper.writeValueAsString(rootNode);
-                }
+                String base64Code = Base64.getEncoder().encodeToString(code.getBytes(StandardCharsets.UTF_8));
+                monacoEngine.executeScript("setCodeFromBase64('" + base64Code + "')");
             } catch (Exception e) {
-                System.err.println("注入 Focus Target 失敗");
+                System.err.println("Monaco 渲染失敗");
+            }
+        });
+
+        try {
+            String persistedJson = loadPersistedAnalysisJson(fileName, fallbackJson);
+            if (isAnalyzeMarkedFailed(persistedJson)) {
+                Platform.runLater(() -> aiArea.setText(buildFileAnalysisFailedMessage(fileName)));
+                return;
             }
 
-            // 3. 呼叫 LLM
-            llmService.analyzeCodeAsync(code, astJson).thenAccept(llmJsonResult -> {
-                Platform.runLater(() -> {
-                    try {
-                        String formattedAnalysis = formatLlmResult(llmJsonResult);
-                        aiArea.setText("🤖 【AI 智慧分析結果】\n\n" + formattedAnalysis);
-                    } catch (Exception e) {
-                        aiArea.setText("❌ AI 回傳資料解析失敗\n回傳內容：" + llmJsonResult);
-                    }
+            if (hasMissingClassDescription(persistedJson)) {
+                String focusedAstJson = attachFocusTarget(persistedJson, nodeType, nodeName);
+                llmService.analyzeCodeAsync(code, focusedAstJson).thenAccept(llmJsonResult -> {
+                    Platform.runLater(() -> {
+                        try {
+                            if (isLlmAnalysisFailed(llmJsonResult)) {
+                                persistAnalyzeFailure(fileName, persistedJson);
+                                aiArea.setText(buildFileAnalysisFailedMessage(fileName));
+                                return;
+                            }
+
+                            String mergedJson = mergeAndPersistAnalysis(fileName, persistedJson, llmJsonResult, nodeName);
+                            aiArea.setText(buildDisplayText(mergedJson, nodeType, nodeName));
+                        } catch (Exception e) {
+                            persistAnalyzeFailure(fileName, persistedJson);
+                            aiArea.setText(buildFileAnalysisFailedMessage(fileName));
+                        }
+                    });
                 });
-            });
-        } else {
-            Platform.runLater(() -> aiArea.setText("❌ 找不到原始碼: " + fileName));
+            } else {
+                String displayText = buildDisplayText(persistedJson, nodeType, nodeName);
+                Platform.runLater(() -> aiArea.setText(displayText));
+            }
+        } catch (Exception e) {
+            Platform.runLater(() -> aiArea.setText(buildFileAnalysisFailedMessage(fileName)));
         }
     }
 
-
-
-    // 🚨 修改重點：加入 File 層級，形成 File -> Class -> Method 三層結構
     private List<Map<String, Object>> convertToGraphElements(String jsonStr, String fileName) throws Exception {
         List<Map<String, Object>> elements = new ArrayList<>();
         JsonNode root = mapper.readTree(jsonStr);
@@ -267,28 +271,33 @@ public class MainScreen {
     }
 
 
-    private void saveAnalysisJson(File sourceFile, String jsonStr, SaveMode saveMode, Path sourceDirectory) throws Exception {
-        if (saveMode == SaveMode.FILE) {
-            saveSingleJsonFile(sourceFile.getName(), jsonStr);
-            return;
+    private void saveAnalysisJson(File sourceFile, String jsonStr) throws Exception {
+        String normalizedJson = updateAnalyzeFlag(jsonStr, true);
+        writeJsonFile(OUTPUT_DIRECTORY.resolve(toJsonFileName(sourceFile.getName())), normalizedJson);
+    }
+
+    private void prepareOutputDirectory() {
+        try {
+            if (Files.exists(OUTPUT_DIRECTORY)) {
+                try (Stream<Path> paths = Files.walk(OUTPUT_DIRECTORY)) {
+                    paths.sorted(Comparator.reverseOrder())
+                            .filter(path -> !path.equals(OUTPUT_DIRECTORY))
+                            .forEach(path -> {
+                                try {
+                                    Files.deleteIfExists(path);
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
+                            });
+                }
+            }
+
+            Files.createDirectories(OUTPUT_DIRECTORY);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to prepare files directory", e);
         }
-
-        saveDirectoryJsonFile(sourceFile.getName(), jsonStr, resolveDirectoryOutputPath(sourceDirectory));
-    }
-
-    private void saveSingleJsonFile(String sourceFileName, String jsonStr) throws Exception {
-        Files.createDirectories(RESOURCE_DIRECTORY);
-        writeJsonFile(RESOURCE_DIRECTORY.resolve(toJsonFileName(sourceFileName)), jsonStr);
-    }
-
-    private void saveDirectoryJsonFile(String sourceFileName, String jsonStr, Path outputDirectory) throws Exception {
-        Files.createDirectories(outputDirectory);
-        writeJsonFile(outputDirectory.resolve(toJsonFileName(sourceFileName)), jsonStr);
-    }
-
-    private Path resolveDirectoryOutputPath(Path sourceDirectory) {
-        String folderName = sourceDirectory != null ? sourceDirectory.getFileName().toString() : "output";
-        return SOURCE_DIRECTORY.resolve(folderName);
     }
 
     private String toJsonFileName(String sourceFileName) {
@@ -309,6 +318,250 @@ public class MainScreen {
     }
 
     // 🚨 修改重點：新增 parent 和 flow 參數
+    private String loadPersistedAnalysisJson(String fileName, String fallbackJson) throws Exception {
+        Path jsonPath = OUTPUT_DIRECTORY.resolve(toJsonFileName(fileName));
+        if (Files.exists(jsonPath)) {
+            String persistedJson = Files.readString(jsonPath, StandardCharsets.UTF_8);
+            jsonCache.put(fileName, persistedJson);
+            return persistedJson;
+        }
+        String normalizedFallbackJson = updateAnalyzeFlag(fallbackJson, true);
+        jsonCache.put(fileName, normalizedFallbackJson);
+        return normalizedFallbackJson;
+    }
+
+    private boolean hasMissingClassDescription(String jsonStr) throws Exception {
+        JsonNode root = mapper.readTree(jsonStr);
+        JsonNode classes = root.path("classes");
+        if (!classes.isArray() || classes.isEmpty()) {
+            return true;
+        }
+
+        for (JsonNode classNode : classes) {
+            if (classNode.path("classDescription").asText("").trim().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String attachFocusTarget(String astJson, String nodeType, String nodeName) throws Exception {
+        JsonNode rootNode = mapper.readTree(astJson);
+        if (rootNode instanceof ObjectNode objectNode) {
+            objectNode.put(
+                    "USER_FOCUS_TARGET",
+                    "Please prioritize the clicked " + nodeType + " named " + nodeName
+                            + ", and fill classDescription plus methods.description inside classes."
+            );
+            return mapper.writeValueAsString(objectNode);
+        }
+        return astJson;
+    }
+
+    private String mergeAndPersistAnalysis(String fileName, String baseJson, String llmJsonResult, String nodeName) throws Exception {
+        JsonNode baseRootNode = mapper.readTree(baseJson);
+        if (!(baseRootNode instanceof ObjectNode astRoot)) {
+            return baseJson;
+        }
+
+        JsonNode llmRoot = mapper.readTree(cleanJsonPayload(llmJsonResult));
+        JsonNode llmContent = extractLlmContent(llmRoot);
+        mergeClassDescriptions(astRoot, llmContent, nodeName);
+
+        astRoot.put("analyze", true);
+        String mergedJson = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(astRoot);
+        writeJsonFile(OUTPUT_DIRECTORY.resolve(toJsonFileName(fileName)), mergedJson);
+        jsonCache.put(fileName, mergedJson);
+        return mergedJson;
+    }
+
+    private boolean isAnalyzeMarkedFailed(String jsonStr) throws Exception {
+        JsonNode root = mapper.readTree(jsonStr);
+        return root.has("analyze") && !root.path("analyze").asBoolean(true);
+    }
+
+    private void persistAnalyzeFailure(String fileName, String jsonStr) {
+        try {
+            String failedJson = updateAnalyzeFlag(jsonStr, false);
+            writeJsonFile(OUTPUT_DIRECTORY.resolve(toJsonFileName(fileName)), failedJson);
+            jsonCache.put(fileName, failedJson);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private String updateAnalyzeFlag(String jsonStr, boolean analyzeValue) throws Exception {
+        JsonNode rootNode = mapper.readTree(jsonStr);
+        if (rootNode instanceof ObjectNode objectNode) {
+            objectNode.put("analyze", analyzeValue);
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(objectNode);
+        }
+        return jsonStr;
+    }
+
+    private String cleanJsonPayload(String jsonStr) {
+        return jsonStr.replaceAll("^```json\\s*", "").replaceAll("```$", "").trim();
+    }
+
+    private JsonNode extractLlmContent(JsonNode llmRoot) {
+        if (llmRoot.has("response") && llmRoot.get("response").isObject()) {
+            return llmRoot.get("response");
+        }
+        return llmRoot;
+    }
+
+    private void mergeClassDescriptions(ObjectNode astRoot, JsonNode llmContent, String nodeName) {
+        JsonNode classesNode = astRoot.path("classes");
+        if (!(classesNode instanceof ArrayNode classesArray)) {
+            return;
+        }
+
+        ObjectNode targetClass = findTargetClass(classesArray, llmContent.path("className").asText(""), nodeName);
+        if (targetClass == null) {
+            return;
+        }
+
+        String classDescription = llmContent.path("classDescription").asText("").trim();
+        if (!classDescription.isEmpty()) {
+            targetClass.put("classDescription", classDescription);
+        }
+
+        mergeMethodDescriptions(targetClass, llmContent.path("methods"));
+    }
+
+    private ObjectNode findTargetClass(ArrayNode classesArray, String llmClassName, String nodeName) {
+        for (JsonNode classNode : classesArray) {
+            if (classNode instanceof ObjectNode objectNode) {
+                String className = classNode.path("className").asText("");
+                if (!llmClassName.isBlank() && llmClassName.equals(className)) {
+                    return objectNode;
+                }
+                if (nodeName.equals(className)) {
+                    return objectNode;
+                }
+            }
+        }
+
+        if (classesArray.size() == 1 && classesArray.get(0) instanceof ObjectNode objectNode) {
+            return objectNode;
+        }
+        return null;
+    }
+
+    private void mergeMethodDescriptions(ObjectNode targetClass, JsonNode llmMethods) {
+        if (!(targetClass.path("methods") instanceof ArrayNode astMethods) || !llmMethods.isArray()) {
+            return;
+        }
+
+        for (JsonNode llmMethod : llmMethods) {
+            String methodName = llmMethod.path("methodName").asText("");
+            String description = llmMethod.path("description").asText("").trim();
+            if (methodName.isEmpty() || description.isEmpty()) {
+                continue;
+            }
+
+            for (JsonNode astMethod : astMethods) {
+                if (astMethod instanceof ObjectNode astMethodObject
+                        && methodName.equals(astMethod.path("methodName").asText(""))) {
+                    astMethodObject.put("description", description);
+                    break;
+                }
+            }
+        }
+    }
+
+    private String buildDisplayText(String jsonStr, String nodeType, String nodeName) throws Exception {
+        JsonNode root = mapper.readTree(jsonStr);
+        JsonNode classes = root.path("classes");
+        if (!classes.isArray() || classes.isEmpty()) {
+            return formatLlmResult(jsonStr);
+        }
+
+        JsonNode targetClass = findDisplayClass(classes, nodeType, nodeName);
+        if (targetClass == null) {
+            targetClass = classes.get(0);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("🤖【分析結果】\n");
+        sb.append("📂 類別名稱: ").append(getField(targetClass, "className", "name")).append("\n");
+        sb.append("📝 類別職責: ").append(getField(targetClass, "classDescription", "description", "說明")).append("\n\n");
+
+        if ("method".equals(nodeType)) {
+            JsonNode methodNode = findMethodNode(targetClass.path("methods"), nodeName);
+            if (methodNode != null) {
+                sb.append("⚙方法詳細說明:\n");
+                sb.append("  •").append(getField(methodNode, "methodName", "name")).append("()\n");
+                sb.append("    ➔").append(getField(methodNode, "description", "說明")).append("\n");
+                return sb.toString();
+            }
+        }
+
+        sb.append("⚙方法詳細說明:\n");
+        JsonNode methods = targetClass.path("methods");
+        if (methods.isArray()) {
+            for (JsonNode methodNode : methods) {
+                sb.append("  •").append(getField(methodNode, "methodName", "name")).append("()\n");
+                sb.append("    ➔").append(getField(methodNode, "description", "說明")).append("\n\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private JsonNode findDisplayClass(JsonNode classes, String nodeType, String nodeName) {
+        if ("class".equals(nodeType)) {
+            for (JsonNode classNode : classes) {
+                if (nodeName.equals(classNode.path("className").asText(""))) {
+                    return classNode;
+                }
+            }
+        }
+
+        if ("method".equals(nodeType)) {
+            for (JsonNode classNode : classes) {
+                if (findMethodNode(classNode.path("methods"), nodeName) != null) {
+                    return classNode;
+                }
+            }
+        }
+
+        return classes.get(0);
+    }
+
+    private JsonNode findMethodNode(JsonNode methods, String nodeName) {
+        if (!methods.isArray()) {
+            return null;
+        }
+
+        for (JsonNode methodNode : methods) {
+            if (nodeName.equals(methodNode.path("methodName").asText(""))) {
+                return methodNode;
+            }
+        }
+        return null;
+    }
+
+    private boolean isLlmAnalysisFailed(String llmJsonResult) {
+        try {
+            JsonNode root = mapper.readTree(cleanJsonPayload(llmJsonResult));
+            return root.has("error");
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    private String buildFileAnalysisFailedMessage(String fileName) {
+        return "【分析 '" + fileName + "' 失敗 】";
+    }
+
+    private String[] parsePayload(String payload) {
+        String[] parts = payload.split("\\|\\|\\|");
+        String fileName = parts[0];
+        String nodeType = parts.length > 1 ? parts[1] : "file";
+        String nodeName = parts.length > 2 ? parts[2] : fileName;
+        return new String[]{fileName, nodeType, nodeName};
+    }
+
     private Map<String, Object> createNode(String id, String label, String type, String fileName, String parent, String flow) {
         Map<String, Object> n = new HashMap<>();
         Map<String, Object> d = new HashMap<>();
@@ -341,16 +594,16 @@ public class MainScreen {
             String cDesc = getField(targetNode, "classDescription", "類別職責", "description", "說明");
 
             if (cName.equals("未知") && root.has("response")) {
-                return "🤖 AI 智慧分析報告：\n\n" + root.get("response").asText();
+                return "🤖 分析報告：\n\n" + root.get("response").asText();
             }
             if (cName.equals("未知") && root.has("分析結果")) {
-                return "🤖 AI 智慧分析報告：\n\n" + root.get("分析結果").asText();
+                return "🤖 分析報告：\n\n" + root.get("分析結果").asText();
             }
 
             StringBuilder sb = new StringBuilder();
             sb.append("📂 類別名稱: ").append(cName).append("\n");
             sb.append("📝 類別職責: ").append(cDesc).append("\n\n");
-            sb.append("⚙️ 方法詳細說明:\n");
+            sb.append("⚙ 方法詳細說明:\n");
 
             JsonNode methods = targetNode.has("methods") ? targetNode.get("methods") : targetNode.get("方法清單");
             if (methods == null && targetNode.has("methods")) methods = targetNode.get("methods");
@@ -367,10 +620,9 @@ public class MainScreen {
             }
             return sb.toString();
         } catch (Exception e) {
-            return "❌ 無法解析 AI 回傳的資料:\n" + e.getMessage() + "\n\n【AI 原始輸出】:\n" + jsonStr;
+            return "❌ 無法解析回傳的資料:\n" + e.getMessage() + "\n\n【AI 原始輸出】:\n" + jsonStr;
         }
     }
-
     private String getField(JsonNode node, String... keys) {
         for (String key : keys) {
             if (node.has(key) && !node.get(key).isNull()) {

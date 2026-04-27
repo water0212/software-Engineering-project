@@ -12,7 +12,7 @@ public class JavaBridge {
     // JS 呼叫 window.javaApp.showCode(...)
     public void showCode(String fileName) {
         System.out.println("[後端 Java 橋樑] 收到點擊事件，準備顯示檔名: " + fileName);
-        mainScreen.updateCodeArea(fileName);
+        mainScreen.handleNodeSelectionWithAnalyzeStatus(fileName);
 
     }
 

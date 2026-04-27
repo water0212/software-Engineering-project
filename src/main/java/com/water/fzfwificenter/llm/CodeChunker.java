@@ -15,7 +15,7 @@ public class CodeChunker {
             JsonNode root = mapper.readTree(astJson);
             JsonNode classes = root.path("classes");
 
-            if (classes.isArray() && classes.size() > 0) {
+            if (classes.isArray() && !classes.isEmpty()) {
                 JsonNode firstClass = classes.get(0);
                 String className = firstClass.path("className").asText();
 
