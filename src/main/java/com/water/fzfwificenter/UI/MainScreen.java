@@ -24,11 +24,14 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class MainScreen {
+    private static final Path RESOURCE_DIRECTORY = Path.of("src");
+    private static final Path SOURCE_DIRECTORY = Path.of("src");
 
     private final Stage stage;
     private WebEngine webEngine;
@@ -41,6 +44,11 @@ public class MainScreen {
 
     private JavaBridge javaBridge;
     private final LLMService llmService = new LLMService();
+
+    private enum SaveMode {
+        FILE,
+        DIRECTORY
+    }
 
     public MainScreen(Stage stage) {
         this.stage = stage;
@@ -122,7 +130,7 @@ public class MainScreen {
         FileChooser chooser = new FileChooser();
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Java Files", "*.java"));
         List<File> files = chooser.showOpenMultipleDialog(stage);
-        if (files != null) processAndDisplay(files);
+        if (files != null) processAndDisplay(files, SaveMode.FILE, null);
     }
 
     private void handleImportDirectory() {
@@ -132,12 +140,12 @@ public class MainScreen {
             try (Stream<Path> paths = Files.walk(dir.toPath())) {
                 List<File> files = paths.filter(p -> p.toString().endsWith(".java"))
                         .map(Path::toFile).collect(Collectors.toList());
-                processAndDisplay(files);
+                processAndDisplay(files, SaveMode.DIRECTORY, dir.toPath());
             } catch (Exception e) { e.printStackTrace(); }
         }
     }
 
-    private void processAndDisplay(List<File> files) {
+    private void processAndDisplay(List<File> files, SaveMode saveMode, Path sourceDirectory) {
         LanguageAnalyzer analyzer = AnalyzerFactory.getAnalyzer(ProgrammingLanguage.JAVA);
         List<Map<String, Object>> allElements = new ArrayList<>();
         fileCache.clear();
@@ -147,6 +155,7 @@ public class MainScreen {
             try {
                 String code = Files.readString(file.toPath());
                 String jsonStr = analyzer.analyze(code);
+                saveAnalysisJson(file, jsonStr, saveMode, sourceDirectory);
                 allElements.addAll(convertToGraphElements(jsonStr, file.getName()));
                 fileCache.put(file.getName(), code);
                 jsonCache.put(file.getName(), jsonStr);
@@ -227,6 +236,47 @@ public class MainScreen {
             }
         }
         return elements;
+    }
+
+    private void saveAnalysisJson(File sourceFile, String jsonStr, SaveMode saveMode, Path sourceDirectory) throws Exception {
+        if (saveMode == SaveMode.FILE) {
+            saveSingleJsonFile(sourceFile.getName(), jsonStr);
+            return;
+        }
+
+        saveDirectoryJsonFile(sourceFile.getName(), jsonStr, resolveDirectoryOutputPath(sourceDirectory));
+    }
+
+    private void saveSingleJsonFile(String sourceFileName, String jsonStr) throws Exception {
+        Files.createDirectories(RESOURCE_DIRECTORY);
+        writeJsonFile(RESOURCE_DIRECTORY.resolve(toJsonFileName(sourceFileName)), jsonStr);
+    }
+
+    private void saveDirectoryJsonFile(String sourceFileName, String jsonStr, Path outputDirectory) throws Exception {
+        Files.createDirectories(outputDirectory);
+        writeJsonFile(outputDirectory.resolve(toJsonFileName(sourceFileName)), jsonStr);
+    }
+
+    private Path resolveDirectoryOutputPath(Path sourceDirectory) {
+        String folderName = sourceDirectory != null ? sourceDirectory.getFileName().toString() : "output";
+        return SOURCE_DIRECTORY.resolve(folderName);
+    }
+
+    private String toJsonFileName(String sourceFileName) {
+        return sourceFileName.endsWith(".java")
+                ? sourceFileName.substring(0, sourceFileName.length() - 5) + ".json"
+                : sourceFileName + ".json";
+    }
+
+    private void writeJsonFile(Path outputPath, String jsonStr) throws Exception {
+        Files.writeString(
+                outputPath,
+                jsonStr,
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE
+        );
     }
 
     // 🚨 修改重點：新增 parent 和 flow 參數
