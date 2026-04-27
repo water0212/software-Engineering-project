@@ -43,7 +43,7 @@
         animate: true,           // 開啟流暢動畫
         animationDuration: 800,
         fit: true,               // 自動縮放符合畫面
-        nodeDimensionsIncludeLabels: true, // 🚨 核心關鍵：排版時把文字長度算進去，絕對不重疊！
+        // nodeDimensionsIncludeLabels: true, // 🚨 核心關鍵：排版時把文字長度算進去，絕對不重疊！
         packComponents: true     // 把沒有連線的零散方法，自動打包成緊湊的方塊
     };
 
@@ -64,19 +64,38 @@
             style: [
                 // 1. 類別節點 (父節點容器) 的樣式優化
                 {
+                    selector: 'node[type="file"]',
+                    style: {
+                        'background-color': '#8a2be2', // 紫色系區分檔案
+                        'background-opacity': 0.15,
+                        'border-width': 2,
+                        'border-color': '#8a2be2',
+                        'label': 'data(label)',
+                        'color': '#fff',
+                        'text-valign': 'top',
+                        'text-margin-y': -8,
+                        'font-size': '18px',
+                        'font-weight': 'bold',
+                        'padding': '25px',          // 讓檔案容器更大一點
+                        'shape': 'round-rectangle'
+                    }
+                },
+                // 1. 類別節點 (中層容器)
+                {
                     selector: 'node[type="class"]',
                     style: {
+                        'display': 'none',          // 🚨 預設隱藏，等點擊檔案才顯示
                         'background-color': '#007acc',
-                        'background-opacity': 0.15, // 🚨 讓實心色塊變成 15% 半透明的玻璃感
-                        'border-width': 2,          // 加上科技感邊框
+                        'background-opacity': 0.15,
+                        'border-width': 2,
                         'border-color': '#007acc',
                         'label': 'data(label)',
                         'color': '#fff',
                         'text-valign': 'top',
-                        'text-margin-y': -8,        // 將標題稍微往上推，不擠壓內容
+                        'text-margin-y': -8,
                         'font-size': '16px',
                         'font-weight': 'bold',
-                        'padding': '20px',          // 增加內邊距，讓容器有呼吸空間
+                        'padding': '20px',
                         'shape': 'round-rectangle'
                     }
                 },
@@ -127,10 +146,13 @@
                     }
                 }
             ],
-            layout: layoutConfig
+            layout: { name: 'preset' } // 🚨 1. 初始設定改為 preset，避免一開始就崩潰
         });
 
+        cy.elements(':visible').layout(layoutConfig).run();
+
         // 🚨 節點點擊事件：處理「展開/收合」與呼叫 Java
+        // 節點點擊事件：處理「展開/收合」與呼叫 Java
         cy.on('tap', 'node', function(evt){
             var node = evt.target;
             const file = node.data('fileName');
@@ -138,21 +160,31 @@
 
             showDebug("點擊節點: " + node.id() + " | 檔案: " + file);
 
-            // 如果點擊的是 Class，就觸發展開/收合動畫
-            if (type === 'class') {
+            // 如果點擊的是 File 或 Class，就觸發展開/收合動畫
+            if (type === 'file' || type === 'class') {
                 var children = node.children();
                 if (children.length > 0) {
                     var isHidden = children[0].style('display') === 'none';
-                    // 切換顯示狀態
-                    children.style('display', isHidden ? 'element' : 'none');
-                    // 重新執行排版動畫
-                    cy.layout(layoutConfig).run();
+
+                    if (isHidden) {
+                        // 展開：只顯示「直屬」子節點
+                        children.style('display', 'element');
+                    } else {
+                        // 收合：隱藏「所有」子孫節點
+                        node.descendants().style('display', 'none');
+                    }
+
+                    // 🚨 3. 重新執行排版動畫時，同樣只針對「可見的節點」
+                    cy.elements(':visible').layout(layoutConfig).run();
                 }
             }
 
-            // 呼叫 Java 端讀取程式碼給 AI
-            if (window.javaApp) window.javaApp.showCode(file);
+            const payload = file + "|||" + type + "|||" + node.data('label');
+            // 呼叫 Java 端
+            if (window.javaApp) window.javaApp.showCode(payload);
         });
+
+
 
         // 滑鼠懸浮 Tooltip
         cy.on('mouseover', 'node', function(evt){

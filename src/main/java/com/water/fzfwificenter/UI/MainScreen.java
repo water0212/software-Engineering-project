@@ -170,13 +170,22 @@ public class MainScreen {
         } catch (Exception e) { e.printStackTrace(); }
     }
 
-    public void updateCodeArea(String fileName) {
+    // 🚨 替換原本的 updateCodeArea 方法
+    public void updateCodeArea(String payload) {
+        // 1. 解析 Payload (格式: fileName|||type|||label)
+        String[] parts = payload.split("\\|\\|\\|");
+        String fileName = parts[0];
+        String nodeType = parts.length > 1 ? parts[1] : "file";
+        String nodeName = parts.length > 2 ? parts[2] : fileName;
+
         String code = fileCache.get(fileName);
         String astJson = jsonCache.get(fileName);
 
         if (code != null) {
             Platform.runLater(() -> {
-                aiArea.setText("⏳ 正在結合靜態分析與原始碼進行 AI 解析 [" + fileName + "]...");
+                // 根據點擊的類型，顯示更精準的 UI 提示
+                String displayType = nodeType.equals("method") ? "方法" : (nodeType.equals("class") ? "類別" : "檔案");
+                aiArea.setText("⏳ 正在針對 " + displayType + " [" + nodeName + "] 進行 AI 解析...");
                 try {
                     String base64Code = Base64.getEncoder().encodeToString(code.getBytes(StandardCharsets.UTF_8));
                     monacoEngine.executeScript("setCodeFromBase64('" + base64Code + "')");
@@ -185,6 +194,19 @@ public class MainScreen {
                 }
             });
 
+            // 2. 核心魔法：在 AST JSON 中注入「AI 專注目標」
+            try {
+                JsonNode rootNode = mapper.readTree(astJson);
+                if (rootNode.isObject()) {
+                    String promptHint = "使用者目前點擊了 " + nodeType + "：「" + nodeName + "」。請務必將分析焦點【完全集中】在這個特定元素上，不要分析其他無關的方法。";
+                    ((com.fasterxml.jackson.databind.node.ObjectNode) rootNode).put("USER_FOCUS_TARGET", promptHint);
+                    astJson = mapper.writeValueAsString(rootNode);
+                }
+            } catch (Exception e) {
+                System.err.println("注入 Focus Target 失敗");
+            }
+
+            // 3. 呼叫 LLM
             llmService.analyzeCodeAsync(code, astJson).thenAccept(llmJsonResult -> {
                 Platform.runLater(() -> {
                     try {
@@ -200,25 +222,33 @@ public class MainScreen {
         }
     }
 
-    // 🚨 修改重點：加入父子節點關係與 Flow 屬性
+
+
+    // 🚨 修改重點：加入 File 層級，形成 File -> Class -> Method 三層結構
     private List<Map<String, Object>> convertToGraphElements(String jsonStr, String fileName) throws Exception {
         List<Map<String, Object>> elements = new ArrayList<>();
         JsonNode root = mapper.readTree(jsonStr);
         JsonNode classes = root.path("classes");
 
+        // 1. 建立 File 節點 (最外層，沒有 Parent)
+        elements.add(createNode(fileName, fileName, "file", fileName, null, "none"));
+
         if (classes.isArray()) {
             for (JsonNode cls : classes) {
                 String className = cls.path("className").asText();
-                // 1. 建立 Class 節點 (沒有 Parent)
-                elements.add(createNode(className, className, "class", fileName, null, "none"));
+                // 為了避免不同檔案有同名 Class 造成 ID 衝突，加上 fileName 前綴
+                String classId = fileName + "_" + className;
+
+                // 2. 建立 Class 節點 (Parent 設定為 fileName)
+                elements.add(createNode(classId, className, "class", fileName, fileName, "none"));
 
                 JsonNode methods = cls.path("methods");
                 if (methods.isArray()) {
                     for (JsonNode m : methods) {
                         String mName = m.path("methodName").asText();
-                        String mId = className + "_" + mName;
+                        String mId = classId + "_" + mName;
 
-                        // 2. 判斷資料流向 (基礎關鍵字判定)
+                        // 3. 判斷資料流向 (基礎關鍵字判定)
                         String flow = "none";
                         String mNameLower = mName.toLowerCase();
                         if (mNameLower.startsWith("get") || mNameLower.contains("load") || mNameLower.contains("read")) {
@@ -227,16 +257,15 @@ public class MainScreen {
                             flow = "output";
                         }
 
-                        // 3. 建立 Method 節點，並設定其 parent 為 className
-                        elements.add(createNode(mId, mName, "method", fileName, className, flow));
-
-                        // 注意：因為已經被包在 Class 複合節點內了，就不再需要 Edge，畫面會更乾淨！
+                        // 4. 建立 Method 節點，並設定其 parent 為 classId
+                        elements.add(createNode(mId, mName, "method", fileName, classId, flow));
                     }
                 }
             }
         }
         return elements;
     }
+
 
     private void saveAnalysisJson(File sourceFile, String jsonStr, SaveMode saveMode, Path sourceDirectory) throws Exception {
         if (saveMode == SaveMode.FILE) {
