@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background-color: #1e1e1e; color: #d4d4d4; margin: 0; padding: 20px; overflow-y: auto; }
+        .chat-container { display: flex; flex-direction: column; gap: 20px; max-width: 900px; margin: 0 auto; padding-bottom: 20px; }
+        .message { padding: 15px 20px; border-radius: 12px; line-height: 1.6; font-size: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); word-wrap: break-word; }
+
+        /* 使用者氣泡：右側、深藍色 */
+        .user { align-self: flex-end; background-color: #2b5a91; color: white; border-bottom-right-radius: 2px; max-width: 80%; }
+
+        /* AI 氣泡：左側、深灰色 */
+        .ai { align-self: flex-start; background-color: #2d2d2d; border: 1px solid #444; border-bottom-left-radius: 2px; width: 95%; }
+
+        /* Markdown 排版樣式優化 */
+        .ai h2, .ai h3, .ai h4 { color: #61afef; margin-top: 0; margin-bottom: 10px; }
+        .ai h4 { border-bottom: 1px solid #444; padding-bottom: 5px; }
+        .ai code { background: #3e4451; padding: 2px 5px; border-radius: 4px; font-family: 'Consolas', monospace; color: #e5c07b; }
+        .ai pre { background: #1e1e1e; padding: 12px; border-radius: 6px; overflow-x: auto; border: 1px solid #333; }
+        .ai pre code { background: none; padding: 0; color: #abb2bf; }
+        .ai ul { padding-left: 25px; margin-top: 5px; }
+        .ai blockquote { border-left: 4px solid #56b6c2; margin: 5px 0 15px 0; padding-left: 15px; color: #abb2bf; }
+    </style>
+</head>
+<body>
+<div id="chat-container" class="chat-container">
+    <!-- 初始歡迎語 -->
+    <div class="message ai">
+        <h3>🤖 歡迎來到 FZF Code Analyzer</h3>
+        <p>請從左側點擊 <b>檔案</b> 或 <b>類別</b> 來開始進行深度 AI 程式碼分析。<br>我將為您提供詳細的結構解說與職責分析。</p>
+    </div>
+</div>
+<script>
+    function appendMessage(role, content) {
+        const container = document.getElementById('chat-container');
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message ' + role;
+
+        // 透過 marked.js 渲染 Markdown
+        msgDiv.innerHTML = marked.parse(content);
+        container.appendChild(msgDiv);
+
+        // 平滑捲動到底部
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
+
+    function clearChat() {
+        document.getElementById('chat-container').innerHTML = '';
+    }
+</script>
+</body>
+</html>

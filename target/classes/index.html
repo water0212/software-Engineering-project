@@ -100,40 +100,40 @@
                     }
                 },
                 // 2. 方法節點 (子節點) 的樣式優化
-                {
-                    selector: 'node[type="method"]',
-                    style: {
-                        'display': 'none',
-                        'background-color': '#444',
-                        'label': 'data(label)',
-                        'color': '#eee',
-                        'text-valign': 'center',
-                        'font-size': '12px',
-                        // 🚨 核心關鍵：取消固定寬高，改為 'label' 讓節點自動貼合文字長度
-                        'width': 'label',
-                        'height': 'label',
-                        'padding': '10px',          // 讓文字不會緊貼邊界
-                        'shape': 'round-rectangle' // 將圓形改為圓角矩形，更適合放文字
-                    }
-                },
-                // 3. 資料流顏色標記：輸入 (綠色)
-                {
-                    selector: 'node[flow="input"]',
-                    style: {
-                        'background-color': '#28a745',
-                        'border-width': 2,
-                        'border-color': '#fff'
-                    }
-                },
-                // 4. 資料流顏色標記：輸出 (紅色)
-                {
-                    selector: 'node[flow="output"]',
-                    style: {
-                        'background-color': '#dc3545',
-                        'border-width': 2,
-                        'border-color': '#fff'
-                    }
-                },
+                // {
+                //     selector: 'node[type="method"]',
+                //     style: {
+                //         'display': 'none',
+                //         'background-color': '#444',
+                //         'label': 'data(label)',
+                //         'color': '#eee',
+                //         'text-valign': 'center',
+                //         'font-size': '12px',
+                //         // 🚨 核心關鍵：取消固定寬高，改為 'label' 讓節點自動貼合文字長度
+                //         'width': 'label',
+                //         'height': 'label',
+                //         'padding': '10px',          // 讓文字不會緊貼邊界
+                //         'shape': 'round-rectangle' // 將圓形改為圓角矩形，更適合放文字
+                //     }
+                // },
+                // // 3. 資料流顏色標記：輸入 (綠色)
+                // {
+                //     selector: 'node[flow="input"]',
+                //     style: {
+                //         'background-color': '#28a745',
+                //         'border-width': 2,
+                //         'border-color': '#fff'
+                //     }
+                // },
+                // // 4. 資料流顏色標記：輸出 (紅色)
+                // {
+                //     selector: 'node[flow="output"]',
+                //     style: {
+                //         'background-color': '#dc3545',
+                //         'border-width': 2,
+                //         'border-color': '#fff'
+                //     }
+                // },
                 // 邊緣樣式 (如果有跨類別的連線)
                 {
                     selector: 'edge',
