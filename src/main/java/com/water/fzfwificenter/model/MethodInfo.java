@@ -4,6 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MethodInfo {
+    private String signature;
+    private String qualifiedSignature;
+
+
 
     private String methodName;
     private String returnType;
@@ -69,5 +73,21 @@ public class MethodInfo {
 
     public void addAnnotation(String annotationName) {
         annotations.add(annotationName);
+    }
+
+    public String getSignature() {
+        return signature;
+    }
+
+    public void setSignature(String signature) {
+        this.signature = signature;
+    }
+
+    public String getQualifiedSignature() {
+        return qualifiedSignature;
+    }
+
+    public void setQualifiedSignature(String qualifiedSignature) {
+        this.qualifiedSignature = qualifiedSignature;
     }
 }
