@@ -37,7 +37,7 @@ public class MainScreen {
 
     private final Stage stage;
     private WebEngine webEngine;
-    private WebEngine chatEngine; // 🚨 改為聊天室 WebEngine (取代 monacoEngine 與 aiArea)
+    private WebEngine chatEngine;
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final Map<String, String> fileCache = new HashMap<>();
@@ -68,7 +68,6 @@ public class MainScreen {
         Button resetBtn = new Button("重置視角");
         resetBtn.setOnAction(e -> webEngine.executeScript("cy.fit()"));
 
-        // 🚨 新增：清除對話按鈕
         Button clearBtn = new Button("🧹 清除對話");
         clearBtn.setOnAction(e -> chatEngine.executeScript("clearChat()"));
 
@@ -86,7 +85,9 @@ public class MainScreen {
         webEngine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
             if (newState == Worker.State.SUCCEEDED) {
                 JSObject window = (JSObject) webEngine.executeScript("window");
-                this.javaBridge = new JavaBridge(this);
+                if (this.javaBridge == null) {
+                    this.javaBridge = new JavaBridge(this);
+                }
                 window.setMember("javaApp", javaBridge);
             }
         });
@@ -94,6 +95,18 @@ public class MainScreen {
         // --- 🚨 右側：全螢幕聊天室視窗 ---
         WebView chatView = new WebView();
         chatEngine = chatView.getEngine();
+
+        // 🚨 關鍵修正：確保聊天室引擎也能夠認識 JavaBridge，這樣 chat.html 的 JS 才能呼叫 Java！
+        chatEngine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
+            if (newState == Worker.State.SUCCEEDED) {
+                JSObject window = (JSObject) chatEngine.executeScript("window");
+                if (this.javaBridge == null) {
+                    this.javaBridge = new JavaBridge(this);
+                }
+                window.setMember("javaApp", javaBridge);
+            }
+        });
+
         try {
             String url = Objects.requireNonNull(getClass().getResource("/chat.html")).toExternalForm();
             chatEngine.load(url);
@@ -152,11 +165,13 @@ public class MainScreen {
 
         try {
             String finalJson = mapper.writeValueAsString(allElements);
-            Platform.runLater(() -> webEngine.executeScript("renderGraph(" + finalJson + ")"));
+            Platform.runLater(() -> {
+                webEngine.executeScript("renderGraph(" + finalJson + ")");
+                chatEngine.executeScript("setChips(['這個專案有哪些核心功能？', '列出所有 Controller 類別', '顯示資料庫連線相關的資料流'])");
+            });
         } catch (Exception e) { e.printStackTrace(); }
     }
 
-    // 🚨 修改重點：保留所有資料流邏輯，僅修改對 UI (chatEngine) 的輸出
     public void handleNodeSelectionWithAnalyzeStatus(String payload) {
         String[] parts = payload.split("\\|\\|\\|");
         String fileName = parts[0];
@@ -173,7 +188,6 @@ public class MainScreen {
 
         Platform.runLater(() -> {
             String displayType = nodeType.equals("method") ? "方法" : (nodeType.equals("class") ? "類別" : "檔案");
-            // 發送使用者問題到聊天室
             addChatMessage("user", "請幫我分析 " + displayType + "：「**" + nodeName + "**」");
         });
 
@@ -212,7 +226,6 @@ public class MainScreen {
         }
     }
 
-    // 🚨 輔助方法：與 chat.html 溝通
     private void addChatMessage(String role, String text) {
         Platform.runLater(() -> {
             String escapedText = text.replace("\\", "\\\\")
@@ -222,8 +235,6 @@ public class MainScreen {
             chatEngine.executeScript("appendMessage('" + role + "', '" + escapedText + "')");
         });
     }
-
-    // --- 以下方法完全保留你原本的邏輯 ---
 
     private List<Map<String, Object>> convertToGraphElements(String jsonStr, String fileName) throws Exception {
         List<Map<String, Object>> elements = new ArrayList<>();
@@ -253,7 +264,6 @@ public class MainScreen {
                             flow = "output";
                         }
 
-                        // 🚨 依據您的需求，維持註解狀態
                         // elements.add(createNode(mId, mName, "method", fileName, classId, flow));
                     }
                 }
@@ -452,7 +462,6 @@ public class MainScreen {
         }
     }
 
-    // 🚨 稍微升級這個排版方法，加入 Markdown 標籤，讓 chat.html 渲染起來更漂亮
     private String buildDisplayText(String jsonStr, String nodeType, String nodeName) throws Exception {
         JsonNode root = mapper.readTree(jsonStr);
         JsonNode classes = root.path("classes");
@@ -613,5 +622,37 @@ public class MainScreen {
             }
         }
         return "未知";
+    }
+
+    public void handleUserChatQuery(String query) {
+        String globalContext = jsonCache.values().toString();
+
+        if (globalContext.isEmpty() || globalContext.equals("[]")) {
+            addChatMessage("ai", "請先匯入 Java 檔案或資料夾，我才能回答您的問題喔！");
+            return;
+        }
+
+        llmService.answerChatQueryAsync(query, globalContext).thenAccept(response -> {
+            Platform.runLater(() -> {
+                String displayText = response;
+                String targetClassesJson = "[]";
+
+                int startIndex = response.indexOf("<TARGET_CLASSES>");
+                int endIndex = response.indexOf("</TARGET_CLASSES>");
+
+                if (startIndex != -1 && endIndex != -1) {
+                    targetClassesJson = response.substring(startIndex + 16, endIndex);
+                    displayText = response.substring(0, startIndex).trim();
+                }
+
+                addChatMessage("ai", displayText);
+
+                try {
+                    webEngine.executeScript("highlightClasses(" + targetClassesJson + ")");
+                } catch (Exception e) {
+                    System.err.println("Cytoscape 連動失敗: " + e.getMessage());
+                }
+            });
+        });
     }
 }

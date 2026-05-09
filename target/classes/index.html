@@ -206,6 +206,41 @@
             }
         });
     }
+    // --- 🚨 新增：根據 LLM 判斷的目標類別，進行畫面高亮與過濾 ---
+    function highlightClasses(classNamesArray) {
+        if (!cy) return;
+
+        // 如果傳入空陣列，代表恢復原狀 (顯示所有類別)
+        if (!classNamesArray || classNamesArray.length === 0) {
+            cy.elements('node[type="class"]').style({ 'opacity': 1, 'display': 'element' });
+            cy.elements('node[type="file"]').style({ 'opacity': 1 });
+            cy.layout(layoutConfig).run();
+            return;
+        }
+
+        // 先把所有類別變暗並隱藏
+        cy.elements('node[type="class"]').style({ 'opacity': 0.2, 'display': 'none' });
+        cy.elements('node[type="file"]').style({ 'opacity': 0.2 });
+
+        // 找出名稱符合的類別，將其點亮並顯示
+        let targets = cy.collection();
+        classNamesArray.forEach(name => {
+            const targetNode = cy.nodes(`node[type="class"][label="${name}"]`);
+            if(targetNode.length > 0) {
+                targets = targets.union(targetNode);
+                // 同時點亮它的父節點 (檔案框)
+                targets = targets.union(targetNode.parent());
+            }
+        });
+
+        targets.style({ 'opacity': 1, 'display': 'element' });
+
+        // 重新排版
+        if(targets.length > 0) {
+            cy.elements(':visible').layout(layoutConfig).run();
+            cy.fit(targets, 50); // 鏡頭聚焦到這些節點上
+        }
+    }
 </script>
 </body>
 </html>

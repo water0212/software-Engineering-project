@@ -22,4 +22,9 @@ public class JavaBridge {
         System.out.printf("[Zoom Detector] 當前倍率: %.4f \r",
                 level);
     }
+
+    public void processUserChat(String query) {
+        mainScreen.handleUserChatQuery(query);
+        System.out.println("收到問題: " + query);
+    }
 }
