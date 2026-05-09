@@ -12,7 +12,7 @@ public class JavaBridge {
     // JS 呼叫 window.javaApp.showCode(...)
     public void showCode(String fileName) {
         System.out.println("[後端 Java 橋樑] 收到點擊事件，準備顯示檔名: " + fileName);
-        mainScreen.updateCodeArea(fileName);
+        mainScreen.handleNodeSelectionWithAnalyzeStatus(fileName);
 
     }
 
@@ -21,5 +21,10 @@ public class JavaBridge {
         // 在終端機打印，使用 \r 保持在同一行
         System.out.printf("[Zoom Detector] 當前倍率: %.4f \r",
                 level);
+    }
+
+    public void processUserChat(String query) {
+        mainScreen.handleUserChatQuery(query);
+        System.out.println("收到問題: " + query);
     }
 }

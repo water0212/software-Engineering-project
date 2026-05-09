@@ -63,3 +63,8 @@
 .text-area:focused .content {
     -fx-background-color: #1e1e1e;
 }
+
+.split-pane-divider {
+    -fx-padding: 0 1.2 0 1.2;   /* 越小越細 */
+    -fx-background-color: #3a3a3a;
+}
