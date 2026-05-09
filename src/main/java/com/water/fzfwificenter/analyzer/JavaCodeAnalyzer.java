@@ -88,24 +88,34 @@ public class JavaCodeAnalyzer implements LanguageAnalyzer {
 
         try {
             CompilationUnit cu = StaticJavaParser.parse(code);
+            List<String> importList = new ArrayList<>();
+            cu.getImports().forEach(importDecl -> importList.add(importDecl.getNameAsString()));
             List<ClassInfo> classInfos = new ArrayList<>();
+            String packageName = cu.getPackageDeclaration()
+                    .map(pd -> pd.getNameAsString())
+                    .orElse("");
 
             List<ClassOrInterfaceDeclaration> classDeclarations = cu.findAll(ClassOrInterfaceDeclaration.class);
             List<String> allClassNames = new ArrayList<>();
 
             for (ClassOrInterfaceDeclaration classDecl : classDeclarations) {
                 allClassNames.add(classDecl.getNameAsString());
+
             }
 
             for (ClassOrInterfaceDeclaration classDecl : classDeclarations) {
                 ClassInfo classInfo = new ClassInfo(classDecl.getNameAsString());
-
+                classInfo.setPackageName(packageName);
+                classInfo.setImport(importList);
+                String qualifiedClassName = packageName.isEmpty()
+                        ? classDecl.getNameAsString()
+                        : packageName + "." + classDecl.getNameAsString();
+                classInfo.setQualifiedClassName(qualifiedClassName);
                 if (classDecl.isInterface()) {
                     classInfo.setType("interface");
                 } else {
                     classInfo.setType("class");
                 }
-
                 for (AnnotationExpr annotation : classDecl.getAnnotations()) {
                     classInfo.addAnnotation(annotation.getNameAsString());
                 }
@@ -139,7 +149,14 @@ public class JavaCodeAnalyzer implements LanguageAnalyzer {
                     for (AnnotationExpr annotation : methodDecl.getAnnotations()) {
                         methodInfo.addAnnotation(annotation.getNameAsString());
                     }
+                    String paramTypes = methodDecl.getParameters().stream()
+                            .map(p -> p.getType().asString())
+                            .reduce((a, b) -> a + "," + b)
+                            .orElse("");
 
+                    String signature = methodDecl.getNameAsString() + "(" + paramTypes + ")";
+                    methodInfo.setSignature(signature);
+                    methodInfo.setQualifiedSignature(classInfo.getQualifiedClassName() + "." + signature);
                     for (Parameter parameter : methodDecl.getParameters()) {
                         ParameterInfo parameterInfo = new ParameterInfo(
                                 parameter.getType().asString(),

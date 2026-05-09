@@ -13,12 +13,19 @@ public class ClassInfo {
     private List<String> annotations = new ArrayList<>();
     private List<FieldInfo> fields = new ArrayList<>();
     private List<MethodInfo> methods = new ArrayList<>();
+    private String packageName;
+    private List<String> imports = new ArrayList<>();
+    private String filePath;
+    private String qualifiedClassName;
+
+
 
     public ClassInfo() {
     }
 
     public ClassInfo(String className) {
         this.className = className;
+
     }
 
     public String getClassName() {
@@ -105,4 +112,36 @@ public class ClassInfo {
         fields.add(field);
     }
 
+    public String getFilePath() {
+        return filePath;
+    }
+
+    public void setFilePath(String filePath) {
+        this.filePath = filePath;
+    }
+
+    public String getPackageName() {
+        return packageName;
+    }
+
+    public void setPackageName(String packageName) {
+        this.packageName = packageName;
+    }
+    public void addImport(String importName) {
+        this.imports.add(importName);
+    }
+    public void setImport(List<String> importName) {
+        this.imports = importName;
+    }
+    public List<String> getImport() {
+        return imports;
+    }
+
+    public String getQualifiedClassName() {
+        return qualifiedClassName;
+    }
+
+    public void setQualifiedClassName(String qualifiedClassName) {
+        this.qualifiedClassName = qualifiedClassName;
+    }
 }
