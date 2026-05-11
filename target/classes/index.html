@@ -118,6 +118,7 @@
 
             showDebug("點擊節點: " + node.id() + " | 檔案: " + file);
 
+            // Left-click: only expand/collapse (不要發起詢問或解析)
             if (type === 'file' || type === 'class') {
                 var children = node.children();
                 if (children.length > 0) {
@@ -132,10 +133,23 @@
                     cy.elements(':visible').layout(layoutConfig).run();
                 }
             }
+        });
+
+        // Right-click (context tap): 問題詢問並解析，但不展開/收合節點
+        cy.on('cxttap', 'node', function(evt){
+            // 防止瀏覽器預設的右鍵選單
+            if (evt && evt.originalEvent && evt.originalEvent.preventDefault) evt.originalEvent.preventDefault();
+
+            var node = evt.target;
+            const file = node.data('fileName');
+            const type = node.data('type');
+
+            showDebug("右鍵分析: " + node.id() + " | 檔案: " + file);
 
             const payload = file + "|||" + type + "|||" + node.data('label');
             if (window.javaApp) window.javaApp.showCode(payload);
         });
+
 
         cy.on('mouseover', 'node', function(evt){
             var node = evt.target;
