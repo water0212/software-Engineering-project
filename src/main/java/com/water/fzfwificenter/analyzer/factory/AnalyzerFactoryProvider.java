@@ -6,6 +6,16 @@ import com.water.fzfwificenter.analyzer.type.ProgrammingLanguage;
 
 /***
  * 最上層的工廠。用於調用不同語言的二層工廠
+ * 呼叫方式
+ * AnalyzerAbstractFactory factory = AnalyzerFactoryProvider.getFactory(ProgrammingLanguage.JAVA);
+ *
+ * LanguageAnalyzer singleAnalyzer = factory.createLanguageAnalyzer();
+ * String singleJson = singleAnalyzer.analyze(code);
+ *
+ * ProjectAnalyzer projectAnalyzer = factory.createProjectAnalyzer();
+ * String projectJson = projectAnalyzer.analyzeProjectToJson(path);
+ *
+ *
  */
 public class AnalyzerFactoryProvider {
 
