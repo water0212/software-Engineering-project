@@ -35,16 +35,14 @@
         debugBar.style.backgroundColor = isError ? "#8b0000" : "#007acc";
     }
 
-    // 🚨 升級為 fcose 複合節點排版配置
     const layoutConfig = {
         name: 'fcose',
         quality: 'default',
-        randomize: false,        // 保持相對位置穩定
-        animate: true,           // 開啟流暢動畫
+        randomize: false,
+        animate: true,
         animationDuration: 800,
-        fit: true,               // 自動縮放符合畫面
-        // nodeDimensionsIncludeLabels: true, // 🚨 核心關鍵：排版時把文字長度算進去，絕對不重疊！
-        packComponents: true     // 把沒有連線的零散方法，自動打包成緊湊的方塊
+        fit: true,
+        packComponents: true
     };
 
     function renderGraph(graphData) {
@@ -62,11 +60,10 @@
             maxZoom: 1.5,
 
             style: [
-                // 1. 類別節點 (父節點容器) 的樣式優化
                 {
                     selector: 'node[type="file"]',
                     style: {
-                        'background-color': '#8a2be2', // 紫色系區分檔案
+                        'background-color': '#8a2be2',
                         'background-opacity': 0.15,
                         'border-width': 2,
                         'border-color': '#8a2be2',
@@ -76,15 +73,14 @@
                         'text-margin-y': -8,
                         'font-size': '18px',
                         'font-weight': 'bold',
-                        'padding': '25px',          // 讓檔案容器更大一點
+                        'padding': '25px',
                         'shape': 'round-rectangle'
                     }
                 },
-                // 1. 類別節點 (中層容器)
                 {
                     selector: 'node[type="class"]',
                     style: {
-                        'display': 'none',          // 🚨 預設隱藏，等點擊檔案才顯示
+                        'display': 'none', // 預設隱藏，等點擊檔案才顯示
                         'background-color': '#007acc',
                         'background-opacity': 0.15,
                         'border-width': 2,
@@ -99,42 +95,6 @@
                         'shape': 'round-rectangle'
                     }
                 },
-                // 2. 方法節點 (子節點) 的樣式優化
-                // {
-                //     selector: 'node[type="method"]',
-                //     style: {
-                //         'display': 'none',
-                //         'background-color': '#444',
-                //         'label': 'data(label)',
-                //         'color': '#eee',
-                //         'text-valign': 'center',
-                //         'font-size': '12px',
-                //         // 🚨 核心關鍵：取消固定寬高，改為 'label' 讓節點自動貼合文字長度
-                //         'width': 'label',
-                //         'height': 'label',
-                //         'padding': '10px',          // 讓文字不會緊貼邊界
-                //         'shape': 'round-rectangle' // 將圓形改為圓角矩形，更適合放文字
-                //     }
-                // },
-                // // 3. 資料流顏色標記：輸入 (綠色)
-                // {
-                //     selector: 'node[flow="input"]',
-                //     style: {
-                //         'background-color': '#28a745',
-                //         'border-width': 2,
-                //         'border-color': '#fff'
-                //     }
-                // },
-                // // 4. 資料流顏色標記：輸出 (紅色)
-                // {
-                //     selector: 'node[flow="output"]',
-                //     style: {
-                //         'background-color': '#dc3545',
-                //         'border-width': 2,
-                //         'border-color': '#fff'
-                //     }
-                // },
-                // 邊緣樣式 (如果有跨類別的連線)
                 {
                     selector: 'edge',
                     style: {
@@ -146,13 +106,11 @@
                     }
                 }
             ],
-            layout: { name: 'preset' } // 🚨 1. 初始設定改為 preset，避免一開始就崩潰
+            layout: { name: 'preset' }
         });
 
         cy.elements(':visible').layout(layoutConfig).run();
 
-        // 🚨 節點點擊事件：處理「展開/收合」與呼叫 Java
-        // 節點點擊事件：處理「展開/收合」與呼叫 Java
         cy.on('tap', 'node', function(evt){
             var node = evt.target;
             const file = node.data('fileName');
@@ -160,33 +118,39 @@
 
             showDebug("點擊節點: " + node.id() + " | 檔案: " + file);
 
-            // 如果點擊的是 File 或 Class，就觸發展開/收合動畫
+            // Left-click: only expand/collapse (不要發起詢問或解析)
             if (type === 'file' || type === 'class') {
                 var children = node.children();
                 if (children.length > 0) {
                     var isHidden = children[0].style('display') === 'none';
 
                     if (isHidden) {
-                        // 展開：只顯示「直屬」子節點
                         children.style('display', 'element');
                     } else {
-                        // 收合：隱藏「所有」子孫節點
                         node.descendants().style('display', 'none');
                     }
 
-                    // 🚨 3. 重新執行排版動畫時，同樣只針對「可見的節點」
                     cy.elements(':visible').layout(layoutConfig).run();
                 }
             }
+        });
+
+        // Right-click (context tap): 問題詢問並解析，但不展開/收合節點
+        cy.on('cxttap', 'node', function(evt){
+            // 防止瀏覽器預設的右鍵選單
+            if (evt && evt.originalEvent && evt.originalEvent.preventDefault) evt.originalEvent.preventDefault();
+
+            var node = evt.target;
+            const file = node.data('fileName');
+            const type = node.data('type');
+
+            showDebug("右鍵分析: " + node.id() + " | 檔案: " + file);
 
             const payload = file + "|||" + type + "|||" + node.data('label');
-            // 呼叫 Java 端
             if (window.javaApp) window.javaApp.showCode(payload);
         });
 
 
-
-        // 滑鼠懸浮 Tooltip
         cy.on('mouseover', 'node', function(evt){
             var node = evt.target;
             var tooltip = document.getElementById('tooltip');
@@ -206,41 +170,79 @@
             }
         });
     }
-    // --- 🚨 新增：根據 LLM 判斷的目標類別，進行畫面高亮與過濾 ---
-    function highlightClasses(classNamesArray) {
+
+    // --- 🚨 替換為全新版本：根據 LLM 判斷進行完全過濾與畫出動態箭頭 ---
+    function highlightAndDrawFlow(classNamesArray, flowArray) {
         if (!cy) return;
 
-        // 如果傳入空陣列，代表恢復原狀 (顯示所有類別)
+        // 1. 清除上一次 AI 產生的「動態箭頭」
+        cy.remove('edge[dynamic="true"]');
+
+        // 如果傳入空陣列，代表恢復原狀 (顯示所有檔案，隱藏所有類別)
         if (!classNamesArray || classNamesArray.length === 0) {
-            cy.elements('node[type="class"]').style({ 'opacity': 1, 'display': 'element' });
-            cy.elements('node[type="file"]').style({ 'opacity': 1 });
+            cy.elements('node[type="file"]').style({ 'display': 'element' });
+            cy.elements('node[type="class"]').style({ 'display': 'none' });
             cy.layout(layoutConfig).run();
             return;
         }
 
-        // 先把所有類別變暗並隱藏
-        cy.elements('node[type="class"]').style({ 'opacity': 0.2, 'display': 'none' });
-        cy.elements('node[type="file"]').style({ 'opacity': 0.2 });
+        // 2. 🚨 完全隱藏：把所有節點直接設定為 none (不可見、不佔位)
+        cy.elements('node').style({ 'display': 'none' });
 
-        // 找出名稱符合的類別，將其點亮並顯示
+        // 3. 找出被 LLM 點名的類別，並將它們與父節點 (檔案框) 顯示出來
         let targets = cy.collection();
         classNamesArray.forEach(name => {
             const targetNode = cy.nodes(`node[type="class"][label="${name}"]`);
             if(targetNode.length > 0) {
                 targets = targets.union(targetNode);
-                // 同時點亮它的父節點 (檔案框)
                 targets = targets.union(targetNode.parent());
             }
         });
 
-        targets.style({ 'opacity': 1, 'display': 'element' });
+        // 點亮目標節點
+        targets.style({ 'display': 'element' });
 
-        // 重新排版
+        // 4. 🚨 繪製資料流動態箭頭
+        if (flowArray && flowArray.length > 0) {
+            flowArray.forEach(flow => {
+                const sourceNode = cy.nodes(`node[type="class"][label="${flow.source}"]`);
+                const targetNode = cy.nodes(`node[type="class"][label="${flow.target}"]`);
+
+                if (sourceNode.length > 0 && targetNode.length > 0) {
+                    cy.add({
+                        group: 'edges',
+                        data: {
+                            id: 'dyn_' + flow.source + '_' + flow.target,
+                            source: sourceNode.id(),
+                            target: targetNode.id(),
+                            label: flow.label,
+                            dynamic: "true"
+                        }
+                    });
+                }
+            });
+        }
+
+        // 5. 針對動態箭頭套用炫酷樣式 (亮黃色，有文字標籤)
+        cy.style().selector('edge[dynamic="true"]').style({
+            'width': 3,
+            'line-color': '#e5c07b',
+            'target-arrow-color': '#e5c07b',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'label': 'data(label)',
+            'font-size': '14px',
+            'color': '#e5c07b',
+            'text-background-opacity': 1,
+            'text-background-color': '#1e1e1e', // 讓文字有底色不會被線擋住
+            'text-background-padding': '4px'
+        }).update();
+
+        // 6. 重新排版剩下的精華節點
         if(targets.length > 0) {
             cy.elements(':visible').layout(layoutConfig).run();
-            cy.fit(targets, 50); // 鏡頭聚焦到這些節點上
+            cy.fit(targets, 50);
         }
     }
-</script>
-</body>
+</script> </body>
 </html>

@@ -16,14 +16,17 @@ public class LLMService {
 
     private final HttpClient httpClient;
     private final ObjectMapper mapper;
+    private static final String API_KEY = System.getenv("GEMINI_API_KEY");
 
-    // 🚨 1. 請將這裡換成你在 Google AI Studio 申請的 API Key (AIza開頭)
-    private static final String API_KEY = "AIzaSyAHBcZoG-sfnH4xh2FqkpmXM-vMhONGYUc";
-
-    // 🚨 直接使用你清單中最新且穩定的 2.5 Flash 模型
+    // 🚨 API 端點不變
     private static final String API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + API_KEY;
 
     public LLMService() {
+        // 加上一個防呆機制：如果忘記設定環境變數，會在控制台印出警告
+        if (API_KEY == null || API_KEY.isBlank()) {
+            System.err.println("🚨 嚴重錯誤：找不到環境變數 GEMINI_API_KEY！請確認是否已正確設定。");
+        }
+
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(60))
                 .build();
@@ -56,11 +59,12 @@ public class LLMService {
                                 "1. 優先引用已知的類別、檔案、方法名稱。\n" +
                                 "2. 不得虛構不存在的檔案或類別。\n" +
                                 "3. 若使用者需求屬於「專案延伸任務」，可以執行，但要清楚說明是根據現有專案資訊整理或推導。"+
-                        "【Cytoscape 畫面連動規則】\n" +
-                        "為了在前端視覺化，你必須判斷這個問題牽涉到哪些「類別(Class)」。\n" +
-                        "在回答的最後一行，請務必使用以下格式輸出牽涉的類別名稱（請用 JSON Array 格式包裝在標籤內，即使只有一個也要包），若無牽涉特定類別則輸出空陣列 []：\n" +
-                        "<TARGET_CLASSES>[\"ClassA\", \"ClassB\"]</TARGET_CLASSES>\n\n" +
-                        "【專案結構 JSON】\n" + globalProjectJson;
+                                "【Cytoscape 畫面連動規則】\n" +
+                                "為了在前端視覺化，你必須在回答的最後，嚴格使用以下兩種標籤輸出 JSON 陣列：\n" +
+                                "1. 牽涉類別：<TARGET_CLASSES>[\"ClassA\", \"ClassB\"]</TARGET_CLASSES>\n" +
+                                "2. 資料流向：如果你判斷出類別之間有呼叫、依賴或資料傳遞關係，請標示出箭頭（若無則輸出 []）：\n" +
+                                "<DATA_FLOW>[{\"source\":\"ClassA\", \"target\":\"ClassB\", \"label\":\"呼叫 / 查詢\"}]</DATA_FLOW>\n\n" +
+                                "【專案結構 JSON】\n" + globalProjectJson;
 
                 ObjectNode requestBodyNode = mapper.createObjectNode();
 
@@ -96,6 +100,58 @@ public class LLMService {
             }
         });
     }
+
+    public CompletableFuture<String> suggestProjectQuestionsAsync(String globalProjectJson) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String systemPrompt =
+                        "你是一個 Java 專案分析助手。請只根據提供的專案結構 JSON，推薦使用者接下來最可能想問的 3 個問題。\n" +
+                                "問題必須具體、與這個專案內容相關、適合用來理解架構、核心流程、資料流、重要類別或潛在改善方向。\n" +
+                                "每個問題最多 10 個字，請用短句，不要加標點符號。\n" +
+                                "請只輸出 JSON Array，不要輸出 Markdown、編號、解釋或其他文字。\n" +
+                                "格式範例：[\"核心功能\", \"資料流向\", \"主要類別\"]\n\n" +
+                                "【專案結構 JSON】\n" + globalProjectJson;
+
+                ObjectNode requestBodyNode = mapper.createObjectNode();
+
+                ObjectNode systemInstruction = requestBodyNode.putObject("systemInstruction");
+                systemInstruction.putArray("parts").addObject().put("text", systemPrompt);
+
+                ArrayNode contents = requestBodyNode.putArray("contents");
+                contents.addObject().putArray("parts").addObject().put("text", "請產生 3 個推薦問題。");
+
+                ObjectNode generationConfig = requestBodyNode.putObject("generationConfig");
+                generationConfig.put("temperature", 0.4);
+                generationConfig.put("responseMimeType", "application/json");
+
+                String requestBody = mapper.writeValueAsString(requestBodyNode);
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(API_URL))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                JsonNode rootNode = mapper.readTree(response.body());
+
+                if (rootNode.has("error")) {
+                    return "[]";
+                }
+
+                JsonNode candidates = rootNode.path("candidates");
+                if (candidates.isArray() && candidates.size() > 0) {
+                    return candidates.get(0).path("content").path("parts").get(0).path("text").asText();
+                }
+
+                return "[]";
+            } catch (Exception e) {
+                e.printStackTrace();
+                return "[]";
+            }
+        });
+    }
+
     // 🚨 把 MainScreen.java 需要的方法加回來了！並升級為 Gemini API 版本
     public CompletableFuture<String> analyzeCodeAsync(String javaCode, String astJson) {
         return CompletableFuture.supplyAsync(() -> {
