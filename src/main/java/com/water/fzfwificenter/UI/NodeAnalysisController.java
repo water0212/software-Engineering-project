@@ -67,7 +67,14 @@ class NodeAnalysisController {
 
             if (hasMissingClassDescription(persistedJson)) {
                 String focusedAstJson = attachFocusTarget(persistedJson, nodeType, nodeName);
-                llmService.analyzeCodeAsync(code, focusedAstJson).thenAccept(llmJsonResult -> {
+                // 讀取 dep.json（若存在），並一併傳給 LLM
+                    String projectDepsJson = "";
+                    try {
+                        Path depPath = outputDirectory.resolve("dep.json");
+                        if (Files.exists(depPath)) projectDepsJson = Files.readString(depPath, StandardCharsets.UTF_8);
+                    } catch (Exception ignored) {}
+
+                    llmService.analyzeCodeAsync(code, focusedAstJson, projectDepsJson).thenAccept(llmJsonResult -> {
                     Platform.runLater(() -> {
                         try {
                             if (isLlmAnalysisFailed(llmJsonResult)) {

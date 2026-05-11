@@ -1,7 +1,10 @@
 package com.water.fzfwificenter.test;
+import com.water.fzfwificenter.analyzer.core.ProjectAnalyzer;
 import com.water.fzfwificenter.analyzer.exception.AnalysisException;
+import com.water.fzfwificenter.analyzer.factory.AnalyzerAbstractFactory;
 import com.water.fzfwificenter.analyzer.factory.AnalyzerFactory;
 import com.water.fzfwificenter.analyzer.core.LanguageAnalyzer;
+import com.water.fzfwificenter.analyzer.factory.AnalyzerFactoryProvider;
 import com.water.fzfwificenter.analyzer.type.ProgrammingLanguage;
 
 public class TestAnalyzer {
@@ -22,8 +25,12 @@ public class TestAnalyzer {
                 }
                 """;
         try {
-            LanguageAnalyzer analyzer = AnalyzerFactory.getAnalyzer(ProgrammingLanguage.JAVA);
-            result = analyzer.analyze(Javacode);
+            AnalyzerAbstractFactory factory = AnalyzerFactoryProvider.getFactory(ProgrammingLanguage.JAVA);
+            LanguageAnalyzer singleAnalyzer = factory.createLanguageAnalyzer();
+            result = singleAnalyzer.analyze(Javacode);
+            //ProjectAnalyzer projectAnalyzer = factory.createProjectAnalyzer();
+            //String projectJson = projectAnalyzer.analyzeProjectToJson(path);
+            //result = analyzer.analyze(Javacode);
         }catch(AnalysisException e){
             switch (e.getErrorType()) {
                 case EMPTY_INPUT -> result = ("請先輸入程式碼");

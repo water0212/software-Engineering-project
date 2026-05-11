@@ -154,6 +154,11 @@ public class LLMService {
 
     // 🚨 把 MainScreen.java 需要的方法加回來了！並升級為 Gemini API 版本
     public CompletableFuture<String> analyzeCodeAsync(String javaCode, String astJson) {
+        // 向後相容：若沒有提供 dep 資訊，呼叫三參數版本
+        return analyzeCodeAsync(javaCode, astJson, null);
+    }
+
+    public CompletableFuture<String> analyzeCodeAsync(String javaCode, String astJson, String projectDepsJson) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 // 1. 定義 System Prompt (嚴格要求輸出 JSON)
@@ -173,7 +178,13 @@ public class LLMService {
                         "}";
 
                 // 2. 組合使用者輸入
-                String userPrompt = "<AST>\n" + astJson + "\n</AST>\n\n<CODE>\n" + javaCode + "\n</CODE>\n\n請直接輸出純 JSON 格式：";
+                StringBuilder userPromptBuilder = new StringBuilder();
+                userPromptBuilder.append("<AST>\n").append(astJson).append("\n</AST>\n\n");
+                if (projectDepsJson != null && !projectDepsJson.isBlank()) {
+                    userPromptBuilder.append("<PROJECT_DEPS>\n").append(projectDepsJson).append("\n</PROJECT_DEPS>\n\n");
+                }
+                userPromptBuilder.append("<CODE>\n").append(javaCode).append("\n</CODE>\n\n請直接輸出純 JSON 格式：");
+                String userPrompt = userPromptBuilder.toString();
 
                 // 3. 建立 Gemini JSON Payload
                 ObjectNode requestBodyNode = mapper.createObjectNode();

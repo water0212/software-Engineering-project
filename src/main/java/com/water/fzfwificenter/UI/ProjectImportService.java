@@ -3,9 +3,13 @@ package com.water.fzfwificenter.UI;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.water.fzfwificenter.analyzer.AnalyzerFactory;
-import com.water.fzfwificenter.analyzer.LanguageAnalyzer;
-import com.water.fzfwificenter.analyzer.ProgrammingLanguage;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.water.fzfwificenter.analyzer.factory.AnalyzerFactoryProvider;
+import com.water.fzfwificenter.analyzer.core.LanguageAnalyzer;
+import com.water.fzfwificenter.analyzer.core.ProjectAnalyzer;
+import com.water.fzfwificenter.analyzer.type.ProgrammingLanguage;
+import com.water.fzfwificenter.model.ProjectFileSummary;
+import com.water.fzfwificenter.model.ProjectSummaryResult;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -29,26 +33,116 @@ class ProjectImportService {
     }
 
     ImportResult analyzeImportedFiles(List<File> files) {
-        LanguageAnalyzer analyzer = AnalyzerFactory.getAnalyzer(ProgrammingLanguage.JAVA);
-        List<Map<String, Object>> allElements = new ArrayList<>();
-        Map<String, String> importedFileCache = new HashMap<>();
-        Map<String, String> importedJsonCache = new HashMap<>();
+        // 如果多個檔案屬於同一個資料夾，改用 ProjectAnalyzer 產生 projectJson，再由 summary 組出節點
         prepareOutputDirectory();
 
-        for (File file : files) {
-            try {
-                String code = Files.readString(file.toPath());
-                String jsonStr = analyzer.analyze(code);
-                saveAnalysisJson(file, jsonStr);
-                allElements.addAll(convertToGraphElements(jsonStr, file.getName()));
-                importedFileCache.put(file.getName(), code);
-                importedJsonCache.put(file.getName(), jsonStr);
-            } catch (Exception e) {
-                System.err.println("分析失敗: " + file.getName());
-            }
-        }
-
         try {
+            // 檢查是否所有檔案都來自同一個父目錄
+            var parents = files.stream()
+                    .map(f -> f.toPath().getParent())
+                    .distinct()
+                    .toList();
+
+            List<Map<String, Object>> allElements = new ArrayList<>();
+            Map<String, String> importedFileCache = new HashMap<>();
+            Map<String, String> importedJsonCache = new HashMap<>();
+
+            if (files.size() > 1 && parents.size() == 1) {
+                Path projectRoot = parents.get(0);
+                ProjectAnalyzer projectAnalyzer = AnalyzerFactoryProvider.getFactory(ProgrammingLanguage.JAVA).createProjectAnalyzer();
+                String projectJson = projectAnalyzer.analyzeProjectToJson(projectRoot);
+
+                // 解析 summary JSON
+                ProjectSummaryResult summary = mapper.readValue(projectJson, ProjectSummaryResult.class);
+
+                for (ProjectFileSummary fileSummary : summary.getFiles()) {
+                    String fileName = fileSummary.getFileName();
+                    allElements.add(createNode(fileName, fileName, "file", fileName, null, "none"));
+
+                    for (String className : fileSummary.getClasses()) {
+                        String classId = fileName + "_" + className;
+                        allElements.add(createNode(classId, className, "class", fileName, fileName, "none"));
+                    }
+
+                    // 嘗試讀取原始碼（若存在）
+                    Path candidate = projectRoot.resolve(fileName);
+                    if (!Files.exists(candidate)) {
+                        // 有時 fileName 包含路徑分隔，嘗試直接使用 Path.of
+                        candidate = projectRoot.resolve(Path.of(fileName));
+                    }
+                    String code = "";
+                    try {
+                        if (Files.exists(candidate)) code = Files.readString(candidate);
+                    } catch (Exception ignored) {}
+                    importedFileCache.put(fileName, code);
+
+                    // 建立最小化的 per-file JSON 供其他模組使用（含 classes 和 methods 列表）
+                    ObjectNode fileJson = mapper.createObjectNode();
+                    ArrayNode classesArray = mapper.createArrayNode();
+                    for (String className : fileSummary.getClasses()) {
+                        ObjectNode cls = mapper.createObjectNode();
+                        cls.put("className", className);
+                        ArrayNode methodsArray = mapper.createArrayNode();
+                        // project summary 提供每個檔案的 methods 清單
+                        for (String m : fileSummary.getMethods()) {
+                            ObjectNode mn = mapper.createObjectNode();
+                            mn.put("methodName", m);
+                            methodsArray.add(mn);
+                        }
+                        cls.set("methods", methodsArray);
+                        classesArray.add(cls);
+                    }
+                    fileJson.set("classes", classesArray);
+                    String perFileJson = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(fileJson);
+                    importedJsonCache.put(fileName, perFileJson);
+
+                    // 寫入到 outputDirectory 下的 files（確保 UI 其他部分能夠讀取）
+                    try {
+                        writeJsonFile(outputDirectory.resolve(toJsonFileName(fileName)), perFileJson);
+                    } catch (Exception e) {
+                        System.err.println("無法寫入 per-file JSON: " + fileName + " -> " + e.getMessage());
+                    }
+                }
+
+                // 產生 dep.json，格式: { "files": [ { "fileName": "...", "dependencies": [ ... ] }, ... ] }
+                ArrayNode depsArray = mapper.createArrayNode();
+                for (ProjectFileSummary fs : summary.getFiles()) {
+                    ObjectNode depNode = mapper.createObjectNode();
+                    depNode.put("fileName", fs.getFileName());
+                    ArrayNode deps = mapper.createArrayNode();
+                    for (String d : fs.getDependencies()) deps.add(d);
+                    depNode.set("dependencies", deps);
+                    depsArray.add(depNode);
+                }
+                ObjectNode depRoot = mapper.createObjectNode();
+                depRoot.set("files", depsArray);
+                String depJson = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(depRoot);
+                try {
+                    writeJsonFile(outputDirectory.resolve("dep.json"), depJson);
+                } catch (Exception e) {
+                    System.err.println("無法寫入 dep.json -> " + e.getMessage());
+                }
+
+                String finalJson = mapper.writeValueAsString(allElements);
+                return new ImportResult(finalJson, importedFileCache, importedJsonCache);
+            }
+
+            // 否則維持逐檔分析（舊流程）
+            LanguageAnalyzer analyzer = AnalyzerFactoryProvider.getFactory(ProgrammingLanguage.JAVA).createLanguageAnalyzer();
+
+            for (File file : files) {
+                try {
+                    String code = Files.readString(file.toPath());
+                    String jsonStr = analyzer.analyze(code);
+                    saveAnalysisJson(file, jsonStr);
+                    allElements.addAll(convertToGraphElements(jsonStr, file.getName()));
+                    importedFileCache.put(file.getName(), code);
+                    importedJsonCache.put(file.getName(), jsonStr);
+                } catch (Exception e) {
+                    System.err.println("分析失敗: " + file.getName());
+                }
+            }
+
             String finalJson = mapper.writeValueAsString(allElements);
             return new ImportResult(finalJson, importedFileCache, importedJsonCache);
         } catch (Exception e) {
