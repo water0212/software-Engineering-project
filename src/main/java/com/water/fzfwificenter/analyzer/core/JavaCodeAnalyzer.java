@@ -1,4 +1,4 @@
-package com.water.fzfwificenter.analyzer;
+package com.water.fzfwificenter.analyzer.core;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,6 +14,9 @@ import com.github.javaparser.ast.expr.SuperExpr;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 
 
+import com.water.fzfwificenter.analyzer.exception.AnalysisErrorType;
+import com.water.fzfwificenter.analyzer.exception.AnalysisException;
+import com.water.fzfwificenter.analyzer.type.ProgrammingLanguage;
 import com.water.fzfwificenter.model.AnalysisResult;
 import com.water.fzfwificenter.model.ClassInfo;
 import com.water.fzfwificenter.model.MethodInfo;

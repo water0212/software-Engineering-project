@@ -1,9 +1,9 @@
 package com.water.fzfwificenter.UI;
 
-import com.water.fzfwificenter.analyzer.AnalyzerFactory;
-import com.water.fzfwificenter.analyzer.LanguageAnalyzer;
-import com.water.fzfwificenter.analyzer.ProgrammingLanguage;
-import com.water.fzfwificenter.analyzer.AnalysisException;
+import com.water.fzfwificenter.analyzer.factory.AnalyzerFactory;
+import com.water.fzfwificenter.analyzer.core.LanguageAnalyzer;
+import com.water.fzfwificenter.analyzer.type.ProgrammingLanguage;
+import com.water.fzfwificenter.analyzer.exception.AnalysisException;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;

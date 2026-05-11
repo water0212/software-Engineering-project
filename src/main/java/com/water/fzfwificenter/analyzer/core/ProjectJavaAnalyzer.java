@@ -1,7 +1,9 @@
-package com.water.fzfwificenter.analyzer;
+package com.water.fzfwificenter.analyzer.core;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.water.fzfwificenter.analyzer.builder.ProjectSummaryBuilder;
+import com.water.fzfwificenter.analyzer.type.ProgrammingLanguage;
 import com.water.fzfwificenter.model.ClassInfo;
 import com.water.fzfwificenter.model.ProjectAnalysisResult;
 import com.water.fzfwificenter.model.ProjectSummaryResult;
@@ -13,12 +15,17 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ProjectJavaAnalyzer {
+public class ProjectJavaAnalyzer implements ProjectAnalyzer {
 
     private final JavaCodeAnalyzer javaCodeAnalyzer = new JavaCodeAnalyzer();
     private final ProjectSummaryBuilder projectSummaryBuilder = new ProjectSummaryBuilder();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    @Override
+    public ProgrammingLanguage getLanguage() {
+        return null;
+    }
+    @Override
     public ProjectAnalysisResult analyzeProject(Path rootPath) {
         ProjectAnalysisResult result = new ProjectAnalysisResult();
         result.setProjectName(rootPath.getFileName().toString());
@@ -40,11 +47,12 @@ public class ProjectJavaAnalyzer {
 
         return result;
     }
+    @Override
     public ProjectSummaryResult analyzeProjectToSummary(Path rootPath) {
         ProjectAnalysisResult analysisResult = analyzeProject(rootPath);
         return projectSummaryBuilder.build(analysisResult);
     }
-
+    @Override
     public String analyzeProjectToJson(Path rootPath) {
         ProjectSummaryResult summaryResult = analyzeProjectToSummary(rootPath);
 

@@ -1,11 +1,11 @@
 package com.water.fzfwificenter.test;
 
-import com.water.fzfwificenter.analyzer.AnalysisErrorType;
-import com.water.fzfwificenter.analyzer.AnalysisException;
-import com.water.fzfwificenter.analyzer.AnalyzerFactory;
-import com.water.fzfwificenter.analyzer.JavaCodeAnalyzer;
-import com.water.fzfwificenter.analyzer.LanguageAnalyzer;
-import com.water.fzfwificenter.analyzer.ProgrammingLanguage;
+import com.water.fzfwificenter.analyzer.exception.AnalysisErrorType;
+import com.water.fzfwificenter.analyzer.exception.AnalysisException;
+import com.water.fzfwificenter.analyzer.factory.AnalyzerFactory;
+import com.water.fzfwificenter.analyzer.core.JavaCodeAnalyzer;
+import com.water.fzfwificenter.analyzer.core.LanguageAnalyzer;
+import com.water.fzfwificenter.analyzer.type.ProgrammingLanguage;
 import com.water.fzfwificenter.model.*;
 import org.junit.jupiter.api.Test;
 

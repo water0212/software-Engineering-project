@@ -1,4 +1,4 @@
-package com.water.fzfwificenter.analyzer;
+package com.water.fzfwificenter.analyzer.exception;
 
 public class AnalysisException extends RuntimeException {
 
