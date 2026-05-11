@@ -42,8 +42,18 @@ class ChatController {
 
         return requestAiDisplayResponse(query, globalContext).thenAccept(aiResponse -> Platform.runLater(() -> {
             addChatMessage("ai", aiResponse.displayText());
-            highlightClasses(aiResponse.targetClassesJson());
+            // 🚨 改為呼叫帶有箭頭資料的方法
+            highlightAndDrawFlow(aiResponse.targetClassesJson(), aiResponse.dataFlowJson());
         }));
+    }
+
+    // 2. 新增 highlightAndDrawFlow 方法 (取代原本的 highlightClasses)
+    void highlightAndDrawFlow(String targetClassesJson, String dataFlowJson) {
+        try {
+            graphEngine.executeScript("highlightAndDrawFlow(" + targetClassesJson + ", " + dataFlowJson + ")");
+        } catch (Exception e) {
+            System.err.println("Cytoscape 連動失敗: " + e.getMessage());
+        }
     }
 
     CompletableFuture<AiDisplayResponse> requestAiDisplayResponse(String query, String globalContext) {
@@ -85,25 +95,32 @@ class ChatController {
 
     void highlightClasses(String targetClassesJson) {
         try {
-            graphEngine.executeScript("highlightClasses(" + targetClassesJson + ")");
+            // 🚨 將原本呼叫的 highlightClasses 改為新的 highlightAndDrawFlow，並預設傳入空陣列 [] 給箭頭
+            graphEngine.executeScript("highlightAndDrawFlow(" + targetClassesJson + ", [])");
         } catch (Exception e) {
             System.err.println("Cytoscape 連動失敗: " + e.getMessage());
         }
     }
 
+    // 3. 修改 parseAiDisplayResponse，使用 Regex 安全地抽離兩組標籤
     private AiDisplayResponse parseAiDisplayResponse(String response) {
-        String displayText = response;
         String targetClassesJson = "[]";
+        String dataFlowJson = "[]";
 
-        int startIndex = response.indexOf("<TARGET_CLASSES>");
-        int endIndex = response.indexOf("</TARGET_CLASSES>");
+        // 抽取 TARGET_CLASSES
+        java.util.regex.Matcher tm = java.util.regex.Pattern.compile("(?s)<TARGET_CLASSES>(.*?)</TARGET_CLASSES>").matcher(response);
+        if (tm.find()) targetClassesJson = tm.group(1).trim();
 
-        if (startIndex != -1 && endIndex != -1) {
-            targetClassesJson = response.substring(startIndex + 16, endIndex);
-            displayText = response.substring(0, startIndex).trim();
-        }
+        // 抽取 DATA_FLOW
+        java.util.regex.Matcher fm = java.util.regex.Pattern.compile("(?s)<DATA_FLOW>(.*?)</DATA_FLOW>").matcher(response);
+        if (fm.find()) dataFlowJson = fm.group(1).trim();
 
-        return new AiDisplayResponse(displayText, targetClassesJson);
+        // 將這兩組標籤從顯示文字中徹底抹除
+        String displayText = response.replaceAll("(?s)<TARGET_CLASSES>.*?</TARGET_CLASSES>", "")
+                .replaceAll("(?s)<DATA_FLOW>.*?</DATA_FLOW>", "")
+                .trim();
+
+        return new AiDisplayResponse(displayText, targetClassesJson, dataFlowJson);
     }
 
     private List<String> parseSuggestedQuestions(String response) {

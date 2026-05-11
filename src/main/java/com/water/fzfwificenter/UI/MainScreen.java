@@ -168,7 +168,8 @@ public class MainScreen {
                     if (globalContext.isEmpty() || globalContext.equals("[]")) {
                         return CompletableFuture.completedFuture(new ImportDisplayResult(
                                 importResult,
-                                new AiDisplayResponse("沒有可分析的 Java 專案內容。", "[]"),
+                                // 🚨 修正 1：這裡補上第三個參數 "[]" (空箭頭陣列)
+                                new AiDisplayResponse("沒有可分析的 Java 專案內容。", "[]", "[]"),
                                 Collections.emptyList()
                         ));
                     }
@@ -199,7 +200,11 @@ public class MainScreen {
                         chatController.addChatMessage("ai", displayResult.summary().displayText());
                         chatController.setChatChips(displayResult.questions());
 
-                        chatController.highlightClasses(displayResult.summary().targetClassesJson());
+                        // 🚨 修正 2：改用 highlightAndDrawFlow，讓一匯入專案的 AI 總結也能畫出亮黃色箭頭！
+                        chatController.highlightAndDrawFlow(
+                                displayResult.summary().targetClassesJson(),
+                                displayResult.summary().dataFlowJson()
+                        );
                     } finally {
                         chatController.hideImportLoading();
                         hideLoadingOverlay();

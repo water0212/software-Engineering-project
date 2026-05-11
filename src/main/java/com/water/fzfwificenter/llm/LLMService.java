@@ -59,11 +59,12 @@ public class LLMService {
                                 "1. 優先引用已知的類別、檔案、方法名稱。\n" +
                                 "2. 不得虛構不存在的檔案或類別。\n" +
                                 "3. 若使用者需求屬於「專案延伸任務」，可以執行，但要清楚說明是根據現有專案資訊整理或推導。"+
-                        "【Cytoscape 畫面連動規則】\n" +
-                        "為了在前端視覺化，你必須判斷這個問題牽涉到哪些「類別(Class)」。\n" +
-                        "在回答的最後一行，請務必使用以下格式輸出牽涉的類別名稱（請用 JSON Array 格式包裝在標籤內，即使只有一個也要包），若無牽涉特定類別則輸出空陣列 []：\n" +
-                        "<TARGET_CLASSES>[\"ClassA\", \"ClassB\"]</TARGET_CLASSES>\n\n" +
-                        "【專案結構 JSON】\n" + globalProjectJson;
+                                "【Cytoscape 畫面連動規則】\n" +
+                                "為了在前端視覺化，你必須在回答的最後，嚴格使用以下兩種標籤輸出 JSON 陣列：\n" +
+                                "1. 牽涉類別：<TARGET_CLASSES>[\"ClassA\", \"ClassB\"]</TARGET_CLASSES>\n" +
+                                "2. 資料流向：如果你判斷出類別之間有呼叫、依賴或資料傳遞關係，請標示出箭頭（若無則輸出 []）：\n" +
+                                "<DATA_FLOW>[{\"source\":\"ClassA\", \"target\":\"ClassB\", \"label\":\"呼叫 / 查詢\"}]</DATA_FLOW>\n\n" +
+                                "【專案結構 JSON】\n" + globalProjectJson;
 
                 ObjectNode requestBodyNode = mapper.createObjectNode();
 
