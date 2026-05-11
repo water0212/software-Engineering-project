@@ -4,61 +4,281 @@
     <meta charset="utf-8">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background-color: #1e1e1e; color: #d4d4d4; margin: 0; padding: 20px;
-            display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
 
-        /* 聊天內容區 */
-        #chat-container { flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; padding-bottom: 20px; }
-        .message { padding: 15px 20px; border-radius: 12px; line-height: 1.6; font-size: 14px; word-wrap: break-word; }
-        .user { align-self: flex-end; background-color: #2b5a91; color: white; border-bottom-right-radius: 2px; max-width: 80%; }
-        .ai { align-self: flex-start; background-color: #2d2d2d; border: 1px solid #444; border-bottom-left-radius: 2px; width: 95%; }
+        * {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
 
-        /* Markdown 樣式 */
-        .ai h2, .ai h3, .ai h4 { color: #61afef; margin-top: 0; margin-bottom: 10px; }
-        .ai code { background: #3e4451; padding: 2px 5px; border-radius: 4px; font-family: 'Consolas', monospace; color: #e5c07b; }
+        *::-webkit-scrollbar {
+            display: none;
+            width: 0;
+            height: 0;
+        }
 
-        /* 底部輸入區與氣泡 */
-        #input-area { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; background: #1e1e1e; padding-top: 10px; border-top: 1px solid #333; }
-        #chips-container { display: flex; flex-wrap: wrap; gap: 8px; }
-        .chip { background: #007acc; color: white; border: none; padding: 8px 12px; border-radius: 20px; font-size: 12px; cursor: pointer; transition: 0.2s; }
-        .chip:hover { background: #005f9e; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+        }
 
-        .input-box-wrapper { display: flex; gap: 10px; }
-        #chat-input { flex-grow: 1; padding: 12px; border-radius: 8px; border: 1px solid #444; background: #2d2d2d; color: white; font-size: 14px; outline: none; }
-        #chat-input:focus { border-color: #007acc; }
-        #send-btn { padding: 10px 20px; border-radius: 8px; border: none; background: #007acc; color: white; font-weight: bold; cursor: pointer; }
-        #send-btn:hover { background: #005f9e; }
+        #loading-overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 12px;
+            background: rgba(30, 30, 30, 0.78);
+            z-index: 10;
+        }
+
+        #loading-overlay.active {
+            display: flex;
+        }
+
+        .loading-spinner {
+            width: 34px;
+            height: 34px;
+            border: 3px solid #444;
+            border-top-color: #007acc;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+
+        .loading-text {
+            color: #d4d4d4;
+            font-size: 13px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #chat-container {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding-bottom: 20px;
+        }
+
+        #chat-container::-webkit-scrollbar {
+            display: none;
+        }
+
+        .message {
+            max-width: calc(98% - 2px);
+            box-sizing: border-box;
+            padding: 15px 20px;
+            border-radius: 12px;
+            line-height: 1.6;
+            font-size: 14px;
+            overflow-wrap: anywhere;
+        }
+
+        .user {
+            align-self: flex-end;
+            background-color: #2b5a91;
+            color: white;
+            border-bottom-right-radius: 2px;
+            width: fit-content;
+            max-width: 80%;
+        }
+
+        .ai {
+            align-self: flex-start;
+            background-color: #2d2d2d;
+            border: 1px solid #444;
+            border-bottom-left-radius: 2px;
+            width: 100%;
+        }
+
+        .ai h2,
+        .ai h3,
+        .ai h4 {
+            color: #61afef;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+
+        .ai code {
+            background: #3e4451;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-family: Consolas, monospace;
+            color: #e5c07b;
+        }
+
+        .ai pre {
+            overflow-x: auto;
+            max-width: 100%;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+        
+        .ai pre::-webkit-scrollbar {
+            display: none;
+            width: 0;
+            height: 0;
+        }
+
+        #input-area {
+            flex: 0 0 auto;
+            margin-top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #1e1e1e;
+            padding-top: 10px;
+            border-top: 1px solid #333;
+        }
+
+        #chips-container {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chips-label {
+            flex: 0 0 100%;
+            color: #9cdcfe;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .chip {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .chip:hover {
+            background: #005f9e;
+        }
+
+        .input-box-wrapper {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        #chat-input {
+            flex: 1 1 auto;
+            min-width: 0;
+            min-height: 44px;
+            max-height: 120px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            background: #2d2d2d;
+            color: white;
+            font-family: inherit;
+            font-size: 14px;
+            line-height: 1.4;
+            outline: none;
+            resize: none;
+            box-sizing: border-box;
+            overflow-y: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        #chat-input::-webkit-scrollbar {
+            display: none;
+        }
+
+        #chat-input:focus {
+            border-color: #007acc;
+        }
+
+        #send-btn {
+            flex: 0 0 auto;
+            min-height: 44px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            background: #007acc;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        #send-btn:hover {
+            background: #005f9e;
+        }
     </style>
 </head>
 <body>
+<div id="loading-overlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">正在分析專案...</div>
+</div>
+
 <div id="chat-container">
     <div class="message ai">
-        <h3>🤖 FZF 專案架構助手</h3>
-        <p>請匯入專案。匯入後，您可以點擊快捷按鈕，或直接輸入問題來探索專案架構與資料流！</p>
+        <h3>FZF 程式碼分析助手</h3>
+        <p>匯入 Java 檔案或資料夾後，可以詢問專案架構、資料流或特定功能。</p>
     </div>
 </div>
 
 <div id="input-area">
-    <div id="chips-container">
-    </div>
+    <div id="chips-container"></div>
     <div class="input-box-wrapper">
-        <input type="text" id="chat-input" placeholder="詢問關於專案的架構、資料流或特定功能...">
+        <textarea id="chat-input" rows="1" placeholder="詢問關於專案的架構、資料流或特定功能..."></textarea>
         <button id="send-btn" onclick="submitQuery()">發送</button>
     </div>
 </div>
 
 <script>
     const inputField = document.getElementById('chat-input');
-    inputField.addEventListener('keypress', function(e) { if (e.key === 'Enter') submitQuery(); });
 
-    // 送出問題給 Java
+    inputField.addEventListener('keydown', function(e) {
+        const isEnter = e.key === 'Enter' || e.keyCode === 13 || e.which === 13;
+        if (isEnter && !e.shiftKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            submitQuery();
+        }
+    });
+
+    inputField.addEventListener('input', resizeInput);
+
+    function resizeInput() {
+        inputField.style.height = 'auto';
+        inputField.style.height = Math.min(inputField.scrollHeight, 120) + 'px';
+    }
+
     function submitQuery(text) {
         const query = text || inputField.value.trim();
         if (!query) return;
 
         appendMessage('user', query);
         inputField.value = '';
+        resizeInput();
 
         if (window.javaApp) {
             window.javaApp.processUserChat(query);
@@ -74,17 +294,33 @@
         container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
     }
 
-    // 動態產生快捷氣泡
     function setChips(chipsArray) {
         const container = document.getElementById('chips-container');
         container.innerHTML = '';
+        if (chipsArray.length > 0) {
+            const label = document.createElement('span');
+            label.className = 'chips-label';
+            label.innerText = '可能感興趣的問題:';
+            container.appendChild(label);
+        }
         chipsArray.forEach(text => {
             const btn = document.createElement('button');
             btn.className = 'chip';
-            btn.innerText = "🔍 " + text;
+            btn.innerText = text;
             btn.onclick = () => submitQuery(text);
             container.appendChild(btn);
         });
+    }
+
+    function showLoading(text) {
+        const overlay = document.getElementById('loading-overlay');
+        const label = overlay.querySelector('.loading-text');
+        label.innerText = text || '正在分析專案...';
+        overlay.classList.add('active');
+    }
+
+    function hideLoading() {
+        document.getElementById('loading-overlay').classList.remove('active');
     }
 
     function clearChat() {
