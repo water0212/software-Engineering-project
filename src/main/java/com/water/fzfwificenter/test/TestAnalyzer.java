@@ -1,8 +1,8 @@
 package com.water.fzfwificenter.test;
-import com.water.fzfwificenter.analyzer.AnalysisException;
-import com.water.fzfwificenter.analyzer.AnalyzerFactory;
-import com.water.fzfwificenter.analyzer.LanguageAnalyzer;
-import com.water.fzfwificenter.analyzer.ProgrammingLanguage;
+import com.water.fzfwificenter.analyzer.exception.AnalysisException;
+import com.water.fzfwificenter.analyzer.factory.AnalyzerFactory;
+import com.water.fzfwificenter.analyzer.core.LanguageAnalyzer;
+import com.water.fzfwificenter.analyzer.type.ProgrammingLanguage;
 
 public class TestAnalyzer {
     public static void main(String[] args) {

@@ -1,4 +1,4 @@
-package com.water.fzfwificenter.analyzer;
+package com.water.fzfwificenter.analyzer.builder;
 
 import com.water.fzfwificenter.model.ClassInfo;
 import com.water.fzfwificenter.model.FieldInfo;

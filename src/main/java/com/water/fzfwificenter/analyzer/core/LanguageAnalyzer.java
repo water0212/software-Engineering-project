@@ -1,4 +1,7 @@
-package com.water.fzfwificenter.analyzer;
+package com.water.fzfwificenter.analyzer.core;
+
+import com.water.fzfwificenter.analyzer.exception.AnalysisException;
+import com.water.fzfwificenter.analyzer.type.ProgrammingLanguage;
 
 public interface LanguageAnalyzer {
     ProgrammingLanguage getLanguage();

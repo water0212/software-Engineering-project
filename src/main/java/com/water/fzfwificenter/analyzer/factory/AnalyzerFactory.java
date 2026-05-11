@@ -1,5 +1,15 @@
-package com.water.fzfwificenter.analyzer;
+package com.water.fzfwificenter.analyzer.factory;
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+//此為舊接口，用於單獨輸出單程式碼輸出。
 
+
+import com.water.fzfwificenter.analyzer.core.JavaCodeAnalyzer;
+import com.water.fzfwificenter.analyzer.core.LanguageAnalyzer;
+import com.water.fzfwificenter.analyzer.exception.AnalysisErrorType;
+import com.water.fzfwificenter.analyzer.exception.AnalysisException;
+import com.water.fzfwificenter.analyzer.type.ProgrammingLanguage;
+
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 public class AnalyzerFactory {
     /**
      * 選擇分析器的分析語言

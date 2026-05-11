@@ -1,7 +1,6 @@
 package com.water.fzfwificenter.test;
 
-import com.water.fzfwificenter.analyzer.ProjectJavaAnalyzer;
-import com.water.fzfwificenter.model.ProjectAnalysisResult;
+import com.water.fzfwificenter.analyzer.core.ProjectJavaAnalyzer;
 
 import java.nio.file.Path;
 

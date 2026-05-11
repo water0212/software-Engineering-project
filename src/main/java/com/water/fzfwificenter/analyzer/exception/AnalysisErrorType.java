@@ -1,4 +1,4 @@
-package com.water.fzfwificenter.analyzer;
+package com.water.fzfwificenter.analyzer.exception;
 
 public enum AnalysisErrorType {
     EMPTY_INPUT,
