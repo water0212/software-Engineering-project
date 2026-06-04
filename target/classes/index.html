@@ -45,6 +45,82 @@
         packComponents: true
     };
 
+    function fitVisibleElements(padding = 60) {
+        const visibleElements = cy.elements(':visible');
+        if (visibleElements.length > 0) {
+            cy.fit(visibleElements, padding);
+        }
+    }
+
+    function layoutHighlightedView(targets) {
+        const dynamicEdges = cy.edges('[dynamic="true"]');
+        const classNodes = targets.filter('node[type="class"]');
+        const layoutElements = classNodes.union(dynamicEdges);
+
+        if (layoutElements.length === 0) {
+            fitVisibleElements(60);
+            return;
+        }
+
+        cy.stop();
+
+        const options = dynamicEdges.length > 0
+            ? buildFlowLayoutOptions(dynamicEdges)
+            : buildGridLayoutOptions(classNodes);
+
+        const layout = layoutElements.layout(options);
+        layout.one('layoutstop', function() {
+            cy.fit(targets.union(dynamicEdges), 70);
+        });
+        layout.run();
+    }
+
+    function buildFlowLayoutOptions(dynamicEdges) {
+        let roots = cy.collection();
+        const targetIds = {};
+
+        dynamicEdges.forEach(edge => {
+            targetIds[edge.target().id()] = true;
+        });
+
+        dynamicEdges.forEach(edge => {
+            const source = edge.source();
+            if (!targetIds[source.id()]) {
+                roots = roots.union(source);
+            }
+        });
+
+        const options = {
+            name: 'breadthfirst',
+            directed: true,
+            fit: false,
+            animate: false,
+            padding: 80,
+            spacingFactor: 1.45,
+            avoidOverlap: true,
+            nodeDimensionsIncludeLabels: true
+        };
+
+        if (roots.length > 0) {
+            options.roots = roots;
+        }
+
+        return options;
+    }
+
+    function buildGridLayoutOptions(classNodes) {
+        return {
+            name: 'grid',
+            fit: false,
+            animate: false,
+            padding: 80,
+            avoidOverlap: true,
+            avoidOverlapPadding: 46,
+            condense: false,
+            rows: Math.ceil(Math.sqrt(Math.max(classNodes.length, 1)))
+        };
+    }
+
     function renderGraph(graphData) {
         if(cy) {
             cy.destroy(); // 清除舊圖表確保乾淨
@@ -240,8 +316,7 @@
 
         // 6. 重新排版剩下的精華節點
         if(targets.length > 0) {
-            cy.elements(':visible').layout(layoutConfig).run();
-            cy.fit(targets, 50);
+            layoutHighlightedView(targets);
         }
     }
 </script> </body>
